@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.BockCalculator
 import com.example.data.model.FullGameData
+import com.example.data.model.GameType
 import com.example.ui.components.PlayerAvatar
 import com.example.ui.theme.BockOrange
 import com.example.ui.theme.NegativeRed
@@ -53,6 +54,8 @@ fun RoundSummaryDialog(
     sittingOutPlayerId: Long?,
     bockTriggersCount: Int = 0,
     isSubmitting: Boolean,
+    gameType: GameType = GameType.NORMAL,
+    soloPlayerId: Long? = null,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -68,7 +71,7 @@ fun RoundSummaryDialog(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Bitte vor dem Verbuchen kurz prüfen",
+                    text = if (gameType == GameType.SOLO) "Solospiel prüfen & bestätigen" else "Bitte vor dem Verbuchen kurz prüfen",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -79,6 +82,25 @@ fun RoundSummaryDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Solo-Banner
+                if (gameType == GameType.SOLO) {
+                    val soloPlayer = gameData.players.find { it.id == soloPlayerId }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = "⭐ Solospiel: ${soloPlayer?.name ?: "Solospieler"} spielt allein gegen alle anderen",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+
                 // Bock- und Hochzeitsinfo
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -103,7 +125,7 @@ fun RoundSummaryDialog(
                         )
                     }
 
-                    if (hochzeitPlayerId != null) {
+                    if (gameType == GameType.NORMAL && hochzeitPlayerId != null) {
                         val hochzeitPlayer = gameData.players.find { it.id == hochzeitPlayerId }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -212,7 +234,28 @@ fun RoundSummaryDialog(
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 14.sp
                                 )
-                                if (isSitting) {
+                                if (gameType == GameType.SOLO) {
+                                    if (player.id == soloPlayerId) {
+                                        Text(
+                                            text = "⭐ Solospieler",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    } else if (isSitting) {
+                                        Text(
+                                            text = "Setzt aus",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "Gegenspieler",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else if (isSitting) {
                                     Text(
                                         text = "Setzt aus",
                                         fontSize = 10.sp,

@@ -18,7 +18,9 @@ enum class StatsMetric {
     TOTAL_POINTS,
     AVG_PER_ROUND,
     WINS,
-    WEDDINGS
+    WEDDINGS,
+    SOLO_POINTS,
+    SOLO_AS_SOLOIST
 }
 
 data class StatsUiState(
@@ -29,6 +31,7 @@ data class StatsUiState(
     val barItems: List<BarItem> = emptyList(),
     val topPlayer: PlayerStats? = null,
     val weddingKing: PlayerStats? = null,
+    val soloKing: PlayerStats? = null,
     val highestScoreRecord: Pair<Player, Int>? = null,
     val lowestScoreRecord: Pair<Player, Int>? = null,
     val isLoading: Boolean = false
@@ -77,10 +80,26 @@ class StatsViewModel(
                     displayValue = "${it.weddingCount} Hochzeiten"
                 )
             }.sortedByDescending { it.value }
+            StatsMetric.SOLO_POINTS -> stats.map {
+                val totalSolo = it.soloPointsAsSoloist + it.soloPointsAsOpponent
+                BarItem(
+                    player = it.player,
+                    value = totalSolo.toDouble(),
+                    displayValue = if (totalSolo > 0) "+$totalSolo Pkt." else "$totalSolo Pkt."
+                )
+            }.sortedByDescending { it.value }
+            StatsMetric.SOLO_AS_SOLOIST -> stats.map {
+                BarItem(
+                    player = it.player,
+                    value = it.soloRoundsAsSoloist.toDouble(),
+                    displayValue = "${it.soloRoundsAsSoloist} Soli (${it.soloWinsAsSoloist} Siege)"
+                )
+            }.sortedByDescending { it.value }
         }
 
         val top = stats.maxByOrNull { it.totalPoints }
         val weddingK = stats.filter { it.weddingCount > 0 }.maxByOrNull { it.weddingCount }
+        val soloK = stats.filter { it.soloRoundsAsSoloist > 0 }.maxByOrNull { it.soloRoundsAsSoloist }
         val bestScore = stats.mapNotNull { s -> s.bestRoundScore?.let { s.player to it } }.maxByOrNull { it.second }
         val worstScore = stats.mapNotNull { s -> s.worstRoundScore?.let { s.player to it } }.minByOrNull { it.second }
 
@@ -92,6 +111,7 @@ class StatsViewModel(
             barItems = barItems,
             topPlayer = top,
             weddingKing = weddingK,
+            soloKing = soloK,
             highestScoreRecord = bestScore,
             lowestScoreRecord = worstScore,
             isLoading = false

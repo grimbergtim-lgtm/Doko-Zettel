@@ -7,6 +7,7 @@ import com.example.data.model.FullGameData
 import com.example.data.model.Game
 import com.example.data.model.GamePlayerCrossRef
 import com.example.data.model.GameRound
+import com.example.data.model.GameType
 import com.example.data.model.Player
 import com.example.data.model.PlayerStats
 import com.example.data.model.RoundScore
@@ -87,13 +88,16 @@ class DoppelkopfRepository(
             "Ein Spieler darf nicht mehrfach in derselben Partie ausgewählt werden"
         }
 
+        val defaultRounds = if (playerIds.size == 5 && bockRoundsPerTrigger == 4) 5 else bockRoundsPerTrigger
+
         return database.withTransaction {
             val game = Game(
                 title = title.trim().ifEmpty { "Spielrunde #${System.currentTimeMillis() % 10000}" },
                 playerCount = playerIds.size,
                 currentBockLevel = 1,
                 remainingBockRounds = 0,
-                bockRoundsPerTrigger = bockRoundsPerTrigger.coerceAtLeast(1)
+                bockRoundsPerTrigger = defaultRounds.coerceAtLeast(1),
+                activeBockSeries = ""
             )
             val gameId = gameDao.insertGame(game)
             val crossRefs = playerIds.mapIndexed { index, playerId ->
@@ -154,15 +158,30 @@ class DoppelkopfRepository(
         sittingOutPlayerId: Long? = null,
         note: String = "",
         triggerNewBock: Boolean = false,
-        bockTriggersCount: Int = if (triggerNewBock) 1 else 0
+        bockTriggersCount: Int = if (triggerNewBock) 1 else 0,
+        gameType: String = GameType.NORMAL.name,
+        soloPlayerId: Long? = null
     ): Result<Long> {
         return runCatching {
             database.withTransaction {
                 val game = gameDao.getGameByIdSync(gameId)
                     ?: throw IllegalStateException("Partie $gameId nicht gefunden")
 
-                val currentBockLevel = BockCalculator.coerceLevel(game.currentBockLevel)
+                val duration = BockCalculator.getDurationForPlayerCount(game.playerCount, game.bockRoundsPerTrigger)
                 val triggers = bockTriggersCount.coerceIn(0, 8)
+
+                // Aktive Bockfolgen vor dieser Runde ermitteln
+                val currentSeries = if (game.activeBockSeries.isNotBlank()) {
+                    BockCalculator.parseActiveSeries(game.activeBockSeries)
+                } else if (game.initialRemainingBockRounds > 0 && game.initialBockLevel > 1) {
+                    val count = (game.initialBockLevel - 1).coerceIn(1, 7)
+                    List(count) { game.initialRemainingBockRounds }
+                } else {
+                    emptyList()
+                }
+
+                val currentBockLevel = BockCalculator.calculateLevelFromActiveSeriesCount(currentSeries.size)
+                val multiplier = BockCalculator.getMultiplier(currentBockLevel)
 
                 // Prüfung: Überschreitung der maximalen Bockstufe 8 verhindern
                 if (currentBockLevel + triggers > BockCalculator.MAX_LEVEL) {
@@ -177,23 +196,20 @@ class DoppelkopfRepository(
                 val maxRound = roundDao.getMaxRoundNumberForGame(gameId) ?: 0
                 val nextRoundNumber = maxRound + 1
 
-                val multiplier = BockCalculator.getMultiplier(currentBockLevel)
-
-                // Verbleibende Bockrunden aktualisieren
-                var remaining = game.remainingBockRounds
-                if (remaining > 0) {
-                    remaining -= 1
-                }
-
-                val prevLevel = currentBockLevel
-                val resLevel = if (triggers > 0) {
-                    val target = (currentBockLevel + triggers).coerceIn(1, BockCalculator.MAX_LEVEL)
-                    remaining += triggers * game.bockRoundsPerTrigger
-                    target
-                } else {
-                    if (remaining > 0) currentBockLevel else 1
-                }
+                // Nach dieser Runde:
+                // 1. Jede bisher aktive Folge wird genau 1x heruntergezählt (0 entfernt).
+                // 2. Jede neue Auslösung erzeugt eine eigene Bockfolge mit voller Restlaufzeit (4 bzw. 5).
+                val nextSeries = BockCalculator.advanceActiveSeries(
+                    currentSeries = currentSeries,
+                    newTriggers = triggers,
+                    durationPerSeries = duration
+                )
+                val resLevel = BockCalculator.calculateLevelFromActiveSeriesCount(nextSeries.size)
                 val resMultiplier = BockCalculator.getMultiplier(resLevel)
+                val remainingAfter = nextSeries.maxOrNull() ?: 0
+                val nextSeriesStr = BockCalculator.serializeActiveSeries(nextSeries)
+
+                val effectiveSoloPlayerId = if (gameType == GameType.SOLO.name) soloPlayerId else null
 
                 val round = GameRound(
                     gameId = gameId,
@@ -202,15 +218,17 @@ class DoppelkopfRepository(
                     basePoints = basePoints,
                     bockLevel = currentBockLevel,
                     bockMultiplier = multiplier,
-                    hochzeitPlayerId = hochzeitPlayerId,
+                    hochzeitPlayerId = if (gameType == GameType.SOLO.name) null else hochzeitPlayerId,
                     sittingOutPlayerId = sittingOutPlayerId,
                     note = note.trim(),
                     triggeredBock = triggers > 0,
                     bockTriggersCount = triggers,
-                    previousBockLevel = prevLevel,
+                    previousBockLevel = currentBockLevel,
                     resultingBockLevel = resLevel,
                     resultingBockMultiplier = resMultiplier,
-                    remainingBockRoundsAfter = remaining
+                    remainingBockRoundsAfter = remainingAfter,
+                    gameType = gameType,
+                    soloPlayerId = effectiveSoloPlayerId
                 )
                 val roundId = roundDao.insertRound(round)
 
@@ -263,7 +281,8 @@ class DoppelkopfRepository(
 
                 val updatedGame = game.copy(
                     currentBockLevel = resLevel,
-                    remainingBockRounds = remaining
+                    remainingBockRounds = remainingAfter,
+                    activeBockSeries = nextSeriesStr
                 )
                 gameDao.updateGame(updatedGame)
 
@@ -285,7 +304,9 @@ class DoppelkopfRepository(
         hochzeitPlayerId: Long? = null,
         sittingOutPlayerId: Long? = null,
         note: String = "",
-        bockTriggersCount: Int? = null
+        bockTriggersCount: Int? = null,
+        gameType: String? = null,
+        soloPlayerId: Long? = null
     ): Result<Unit> {
         return runCatching {
             database.withTransaction {
@@ -308,15 +329,22 @@ class DoppelkopfRepository(
                 val safeLevel = BockCalculator.coerceLevel(targetBockLevel)
                 val multiplier = BockCalculator.getMultiplier(safeLevel)
 
+                val effectiveGameType = gameType ?: existingRound.gameType
+                val effectiveSoloPlayerId = if (effectiveGameType == GameType.SOLO.name) {
+                    soloPlayerId ?: existingRound.soloPlayerId
+                } else null
+
                 val updatedRound = existingRound.copy(
                     basePoints = basePoints,
                     bockLevel = safeLevel,
                     bockMultiplier = multiplier,
-                    hochzeitPlayerId = hochzeitPlayerId,
+                    hochzeitPlayerId = if (effectiveGameType == GameType.SOLO.name) null else hochzeitPlayerId,
                     sittingOutPlayerId = sittingOutPlayerId,
                     note = note.trim(),
                     triggeredBock = updatedTriggers > 0,
-                    bockTriggersCount = updatedTriggers
+                    bockTriggersCount = updatedTriggers,
+                    gameType = effectiveGameType,
+                    soloPlayerId = effectiveSoloPlayerId
                 )
                 roundDao.updateRound(updatedRound)
 
@@ -411,43 +439,46 @@ class DoppelkopfRepository(
         val participatingPlayers = gameDao.getPlayersForGameSync(gameId)
         val totalPlayerCount = participatingPlayers.size
 
+        val duration = BockCalculator.getDurationForPlayerCount(game.playerCount, game.bockRoundsPerTrigger)
+
+        // Initial-Zustand zu Beginn der Partie
+        val initialSeries = if (game.initialRemainingBockRounds > 0 && game.initialBockLevel > 1) {
+            val count = (game.initialBockLevel - 1).coerceIn(1, 7)
+            List(count) { game.initialRemainingBockRounds }
+        } else {
+            emptyList()
+        }
+
         if (rounds.isEmpty()) {
+            val initialLevel = BockCalculator.calculateLevelFromActiveSeriesCount(initialSeries.size)
+            val initialRemaining = initialSeries.maxOrNull() ?: 0
             gameDao.updateGame(
                 game.copy(
-                    currentBockLevel = game.initialBockLevel,
-                    remainingBockRounds = game.initialRemainingBockRounds
+                    currentBockLevel = initialLevel,
+                    remainingBockRounds = initialRemaining,
+                    activeBockSeries = BockCalculator.serializeActiveSeries(initialSeries)
                 )
             )
             return
         }
 
-        var currentLevel = game.initialBockLevel
-        var remainingBockRounds = game.initialRemainingBockRounds
+        var currentSeries = initialSeries
 
         for (round in rounds) {
-            val levelForThisRound = currentLevel
+            val levelForThisRound = BockCalculator.calculateLevelFromActiveSeriesCount(currentSeries.size)
             val multiplierForThisRound = BockCalculator.getMultiplier(levelForThisRound)
-
-            var rem = remainingBockRounds
-            if (rem > 0) {
-                rem -= 1
-                if (rem == 0) {
-                    currentLevel = 1
-                }
-            }
 
             val triggers = round.bockTriggersCount.coerceIn(0, 8)
             val prevLevel = levelForThisRound
-            val resLevel = if (triggers > 0) {
-                val target = (levelForThisRound + triggers).coerceIn(1, BockCalculator.MAX_LEVEL)
-                rem += triggers * game.bockRoundsPerTrigger
-                currentLevel = target
-                target
-            } else {
-                if (rem > 0) levelForThisRound else 1
-            }
+
+            val nextSeries = BockCalculator.advanceActiveSeries(
+                currentSeries = currentSeries,
+                newTriggers = triggers,
+                durationPerSeries = duration
+            )
+            val resLevel = BockCalculator.calculateLevelFromActiveSeriesCount(nextSeries.size)
             val resMultiplier = BockCalculator.getMultiplier(resLevel)
-            remainingBockRounds = rem
+            val remainingAfter = nextSeries.maxOrNull() ?: 0
 
             val updatedRound = round.copy(
                 bockLevel = levelForThisRound,
@@ -457,7 +488,7 @@ class DoppelkopfRepository(
                 previousBockLevel = prevLevel,
                 resultingBockLevel = resLevel,
                 resultingBockMultiplier = resMultiplier,
-                remainingBockRoundsAfter = rem
+                remainingBockRoundsAfter = remainingAfter
             )
             roundDao.updateRound(updatedRound)
 
@@ -492,13 +523,20 @@ class DoppelkopfRepository(
                     weddingDao.updateWedding(wedding.copy(bockMultiplier = multiplierForThisRound))
                 }
             }
+
+            currentSeries = nextSeries
         }
 
-        // Finale Bockstufe der Partie aktualisieren
+        // Finale Bockstufe und aktive Folgen der Partie aktualisieren
+        val finalLevel = BockCalculator.calculateLevelFromActiveSeriesCount(currentSeries.size)
+        val finalRemaining = currentSeries.maxOrNull() ?: 0
+        val finalSeriesStr = BockCalculator.serializeActiveSeries(currentSeries)
+
         gameDao.updateGame(
             game.copy(
-                currentBockLevel = currentLevel,
-                remainingBockRounds = remainingBockRounds
+                currentBockLevel = finalLevel,
+                remainingBockRounds = finalRemaining,
+                activeBockSeries = finalSeriesStr
             )
         )
     }
@@ -513,10 +551,15 @@ class DoppelkopfRepository(
         val rounds = roundDao.getRoundsForGameSync(gameId)
         val isAtStart = rounds.isEmpty()
 
+        val activeCount = if (safeRemaining == 0 || safeLevel == 1) 0 else safeLevel - 1
+        val newSeries = if (activeCount > 0) List(activeCount) { safeRemaining } else emptyList()
+        val newSeriesStr = BockCalculator.serializeActiveSeries(newSeries)
+
         gameDao.updateGame(
             game.copy(
                 currentBockLevel = if (safeRemaining == 0) 1 else safeLevel,
                 remainingBockRounds = safeRemaining,
+                activeBockSeries = newSeriesStr,
                 initialBockLevel = if (isAtStart) (if (safeRemaining == 0) 1 else safeLevel) else game.initialBockLevel,
                 initialRemainingBockRounds = if (isAtStart) safeRemaining else game.initialRemainingBockRounds
             )
@@ -581,7 +624,9 @@ class DoppelkopfRepository(
     suspend fun computeAllPlayerStatsSync(): List<PlayerStats> {
         val players = playerDao.getAllPlayersSync()
         val allGames = gameDao.getAllGamesSync().associateBy { it.id }
-        val allRounds = roundDao.getAllRoundsSync().groupBy { it.gameId }
+        val allRoundsList = roundDao.getAllRoundsSync()
+        val allRounds = allRoundsList.groupBy { it.gameId }
+        val allRoundsById = allRoundsList.associateBy { it.id }
         val allScores = roundDao.getAllScoresSync().groupBy { it.playerId }
         val allCrossRefs = gameDao.getAllGamePlayerCrossRefsSync().groupBy { it.playerId }
         val allWeddings = weddingDao.getAllWeddingsSync().groupBy { it.playerId }
@@ -606,6 +651,36 @@ class DoppelkopfRepository(
             val worstRound = activeScores.minOfOrNull { it.finalPoints }
 
             val weddingCount = allWeddings[player.id]?.size ?: 0
+
+            // Solo-spezifische Auswertung
+            var normalRounds = 0
+            var normalPts = 0
+            var soloAsSoloist = 0
+            var soloWinsSoloist = 0
+            var soloPtsSoloist = 0
+            var soloAsOpponent = 0
+            var soloWinsOpponent = 0
+            var soloPtsOpponent = 0
+
+            activeScores.forEach { s ->
+                val round = allRoundsById[s.roundId]
+                if (round != null) {
+                    if (round.isSolo) {
+                        if (round.soloPlayerId == player.id) {
+                            soloAsSoloist++
+                            soloPtsSoloist += s.finalPoints
+                            if (s.finalPoints > 0) soloWinsSoloist++
+                        } else {
+                            soloAsOpponent++
+                            soloPtsOpponent += s.finalPoints
+                            if (s.finalPoints > 0) soloWinsOpponent++
+                        }
+                    } else {
+                        normalRounds++
+                        normalPts += s.finalPoints
+                    }
+                }
+            }
 
             // Siege: Berechne bei abgeschlossenen Spielen, ob dieser Spieler Platz 1 hatte
             var wins = 0
@@ -643,7 +718,15 @@ class DoppelkopfRepository(
                 weddingCount = weddingCount,
                 winsCount = wins,
                 winRatePercent = winRate,
-                highestBockLevelPlayed = highestBock
+                highestBockLevelPlayed = highestBock,
+                normalRoundsPlayed = normalRounds,
+                normalPoints = normalPts,
+                soloRoundsAsSoloist = soloAsSoloist,
+                soloWinsAsSoloist = soloWinsSoloist,
+                soloPointsAsSoloist = soloPtsSoloist,
+                soloRoundsAsOpponent = soloAsOpponent,
+                soloWinsAsOpponent = soloWinsOpponent,
+                soloPointsAsOpponent = soloPtsOpponent
             )
         }.sortedByDescending { it.totalPoints }
     }

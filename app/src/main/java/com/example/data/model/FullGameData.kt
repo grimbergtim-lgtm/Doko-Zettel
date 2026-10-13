@@ -36,15 +36,15 @@ data class FullGameData(
 
     /**
      * Map von PlayerId zu einer Liste von kumulierten Punkteständen nach jeder Runde (inkl. Start 0).
-     * Optional filterbar nach gameType (z.B. "NORMAL" oder "SOLO").
+     * Optional filterbar nach gameType (z.B. NORMAL oder SOLO).
      */
-    fun getCumulativeScoreProgression(filterGameType: String? = null): Map<Long, List<Int>> {
+    fun getCumulativeScoreProgression(filterGameType: GameType? = null): Map<Long, List<Int>> {
         val progression = mutableMapOf<Long, MutableList<Int>>()
         players.forEach { progression[it.id] = mutableListOf(0) }
 
         val runningTotals = players.associate { it.id to 0 }.toMutableMap()
         val sortedRounds = roundsWithScores
-            .filter { filterGameType == null || it.round.gameType == filterGameType }
+            .filter { filterGameType == null || it.round.gameType == filterGameType.name }
             .sortedBy { it.round.roundNumber }
 
         for (roundWithScore in sortedRounds) {

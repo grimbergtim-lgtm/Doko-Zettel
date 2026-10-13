@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.BockCalculator
 import com.example.data.model.FullGameData
+import com.example.data.model.GameType
 import com.example.ui.components.PlayerAvatar
 import com.example.ui.theme.BockOrange
 import com.example.ui.theme.NegativeRed
@@ -157,25 +158,38 @@ fun RoundEntrySheet(
                 }
             }
 
-            // Modus-Wahl: Team vs. Manuell
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = state.entryMode == EntryMode.TEAM,
-                    onClick = { viewModel.setEntryMode(EntryMode.TEAM) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+            // Spieltyp: Normales Spiel vs. Solospiel
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Spieltyp:",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("game_type_selection")
                 ) {
-                    Text("Team (Re / Kontra)")
-                }
-                SegmentedButton(
-                    selected = state.entryMode == EntryMode.MANUAL,
-                    onClick = { viewModel.setEntryMode(EntryMode.MANUAL) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                ) {
-                    Text("Freie Punkteingabe")
+                    SegmentedButton(
+                        selected = state.gameType == GameType.NORMAL,
+                        onClick = { viewModel.setGameType(GameType.NORMAL) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        modifier = Modifier.testTag("game_type_normal")
+                    ) {
+                        Text("Normales Spiel")
+                    }
+                    SegmentedButton(
+                        selected = state.gameType == GameType.SOLO,
+                        onClick = { viewModel.setGameType(GameType.SOLO) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        modifier = Modifier.testTag("game_type_solo")
+                    ) {
+                        Text("⭐ Solospiel")
+                    }
                 }
             }
 
-            // 5-Spieler: Aussetzender Spieler
+            // 5-Spieler: Aussetzender Spieler (gilt für normale Spiele und Solospiele gleichermaßen)
             if (gameData.game.playerCount == 5) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
@@ -193,58 +207,26 @@ fun RoundEntrySheet(
                                 selected = isSitting,
                                 onClick = { viewModel.setSittingOutPlayer(player.id) },
                                 label = { Text(player.name) },
-                                leadingIcon = { PlayerAvatar(player = player, size = 18.dp, showBorder = false) }
+                                leadingIcon = { PlayerAvatar(player = player, size = 18.dp, showBorder = false) },
+                                modifier = Modifier.testTag("sitting_out_${player.id}")
                             )
                         }
                     }
                 }
             }
 
-            if (state.entryMode == EntryMode.TEAM) {
-                // Team-Modus: Gewinner-Partei
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "Siegerpartei:",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { viewModel.setWinningParty(WinningParty.RE) },
-                            modifier = Modifier.weight(1f),
-                            colors = if (state.winningParty == WinningParty.RE) {
-                                ButtonDefaults.outlinedButtonColors(containerColor = PositiveGreen.copy(alpha = 0.15f))
-                            } else ButtonDefaults.outlinedButtonColors()
-                        ) {
-                            Text(
-                                text = "Re gewinnt",
-                                fontWeight = if (state.winningParty == WinningParty.RE) FontWeight.Bold else FontWeight.Normal,
-                                color = if (state.winningParty == WinningParty.RE) PositiveGreen else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.setWinningParty(WinningParty.KONTRA) },
-                            modifier = Modifier.weight(1f),
-                            colors = if (state.winningParty == WinningParty.KONTRA) {
-                                ButtonDefaults.outlinedButtonColors(containerColor = PositiveGreen.copy(alpha = 0.15f))
-                            } else ButtonDefaults.outlinedButtonColors()
-                        ) {
-                            Text(
-                                text = "Kontra gewinnt",
-                                fontWeight = if (state.winningParty == WinningParty.KONTRA) FontWeight.Bold else FontWeight.Normal,
-                                color = if (state.winningParty == WinningParty.KONTRA) PositiveGreen else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
+            if (state.gameType == GameType.SOLO) {
+                // ==============================
+                // SOLOSPIEL: EINGABE & TEAMS
+                // ==============================
+                val activePlayers = gameData.players.filter { it.id != state.sittingOutPlayerId }
+                val currentSoloPlayer = gameData.players.find { it.id == state.soloPlayerId }
+                val currentOpponents = activePlayers.filter { it.id != state.soloPlayerId }
 
-                // Re-Spieler auswählen (2 Spieler)
+                // 1. Auswahl genau eines Solospielers aus den aktiven Teilnehmern
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Re-Team Spieler (${state.rePlayerIds.size}/2):",
+                        text = "Solospieler auswählen (spielt allein gegen alle anderen):",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -252,180 +234,531 @@ fun RoundEntrySheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        gameData.players.filter { it.id != state.sittingOutPlayerId }.forEach { player ->
-                            val isRe = state.rePlayerIds.contains(player.id)
+                        activePlayers.forEach { player ->
+                            val isSolo = state.soloPlayerId == player.id
                             FilterChip(
-                                selected = isRe,
-                                onClick = { viewModel.toggleRePlayer(player.id) },
-                                label = { Text(player.name) },
-                                leadingIcon = { PlayerAvatar(player = player, size = 18.dp, showBorder = false) }
+                                selected = isSolo,
+                                onClick = { viewModel.setSoloPlayer(player.id) },
+                                label = { Text(if (isSolo) "⭐ ${player.name} (Solospieler)" else player.name) },
+                                leadingIcon = { PlayerAvatar(player = player, size = 18.dp, showBorder = false) },
+                                modifier = Modifier.testTag("solo_player_${player.id}")
                             )
                         }
                     }
                 }
 
-                // Basis-Spielpunkte Stepper
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "Erspielte Spielpunkte (vor Bock):",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                // 2. Klare Team-Übersicht: Solospieler vs. Gegenseite
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("solo_team_overview")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        IconButton(
-                            onClick = { viewModel.setBasePoints(state.basePoints - 1) },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Icon(Icons.Default.Remove, contentDescription = "-1")
-                        }
                         Text(
-                            text = "${state.basePoints} Pkt.",
-                            style = MaterialTheme.typography.headlineMedium,
+                            text = "Teamzuordnung für dieses Solo:",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        IconButton(
-                            onClick = { viewModel.setBasePoints(state.basePoints + 1) },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "+1")
+                            Text(
+                                text = "⭐ Solospieler:",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = currentSoloPlayer?.name ?: "Kein Spieler ausgewählt",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
-
-                        // Schnellwahl-Chips
-                        listOf(0, 1, 2, 3, 4, 5, 6).forEach { pts ->
-                            FilterChip(
-                                selected = state.basePoints == pts,
-                                onClick = { viewModel.setBasePoints(pts) },
-                                label = { Text(if (pts == 0) "0 (Nur Hz)" else "$pts") },
-                                modifier = Modifier.padding(horizontal = 2.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "🛡️ Gegenseite (${currentOpponents.size} Spieler):",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (currentOpponents.isNotEmpty()) currentOpponents.joinToString { it.name } else "Keine Gegenspieler",
+                                fontSize = 13.sp
+                            )
+                        }
+                        if (state.sittingOutPlayerId != null) {
+                            val sittingPlayer = gameData.players.find { it.id == state.sittingOutPlayerId }
+                            Text(
+                                text = "⏸️ Pausiert: ${sittingPlayer?.name ?: ""} (0 Punkte)",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
-            } else {
-                // Freie manuelle Eingabe
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Punkte pro Spieler vor Multiplikator:",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    gameData.players.forEach { player ->
-                        val isSitting = player.id == state.sittingOutPlayerId
-                        val rawPts = state.manualRawPoints[player.id] ?: 0
 
+                // 3. Modus-Wahl für Solospiel
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("solo_entry_mode")
+                ) {
+                    SegmentedButton(
+                        selected = state.entryMode == EntryMode.TEAM,
+                        onClick = { viewModel.setEntryMode(EntryMode.TEAM) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                    ) {
+                        Text("Solo-Ergebnis")
+                    }
+                    SegmentedButton(
+                        selected = state.entryMode == EntryMode.MANUAL,
+                        onClick = { viewModel.setEntryMode(EntryMode.MANUAL) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                    ) {
+                        Text("Manuelle Punkte")
+                    }
+                }
+
+                if (state.entryMode == EntryMode.TEAM) {
+                    // Siegerpartei beim Solo
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Rundenergebnis des Solos:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            OutlinedButton(
+                                onClick = { viewModel.setWinningParty(WinningParty.RE) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("solo_won_button"),
+                                colors = if (state.winningParty == WinningParty.RE) {
+                                    ButtonDefaults.outlinedButtonColors(containerColor = PositiveGreen.copy(alpha = 0.15f))
+                                } else ButtonDefaults.outlinedButtonColors()
                             ) {
-                                PlayerAvatar(player = player, size = 26.dp, showBorder = false)
-                                Text(player.name, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = "Solo gewinnt ⭐",
+                                    fontWeight = if (state.winningParty == WinningParty.RE) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (state.winningParty == WinningParty.RE) PositiveGreen else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.setWinningParty(WinningParty.KONTRA) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("solo_lost_button"),
+                                colors = if (state.winningParty == WinningParty.KONTRA) {
+                                    ButtonDefaults.outlinedButtonColors(containerColor = NegativeRed.copy(alpha = 0.15f))
+                                } else ButtonDefaults.outlinedButtonColors()
+                            ) {
+                                Text(
+                                    text = "Gegenseite gewinnt 🛡️",
+                                    fontWeight = if (state.winningParty == WinningParty.KONTRA) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (state.winningParty == WinningParty.KONTRA) NegativeRed else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    // Basispunkte Stepper
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Basis-Spielpunkte (vor Bock-Multiplikator):",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            IconButton(
+                                onClick = { viewModel.setBasePoints(state.basePoints - 1) },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "-1")
+                            }
+                            Text(
+                                text = "${state.basePoints} Pkt.",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            IconButton(
+                                onClick = { viewModel.setBasePoints(state.basePoints + 1) },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "+1")
                             }
 
-                            if (isSitting) {
-                                Text("Setzt aus (0)", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
+                            listOf(1, 2, 3, 4, 5, 6).forEach { pts ->
+                                FilterChip(
+                                    selected = state.basePoints == pts,
+                                    onClick = { viewModel.setBasePoints(pts) },
+                                    label = { Text("$pts") },
+                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                )
+                            }
+                        }
+
+                        val soloWon = state.winningParty == WinningParty.RE
+                        val oppCount = currentOpponents.size
+                        val soloPts = if (soloWon) state.basePoints * oppCount else -state.basePoints * oppCount
+                        val oppPts = if (soloWon) -state.basePoints else state.basePoints
+                        Text(
+                            text = "Verteilung: Solospieler ${if (soloPts > 0) "+$soloPts" else "$soloPts"} Pkt., Gegenspieler je ${if (oppPts > 0) "+$oppPts" else "$oppPts"} Pkt.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    // Manuelle Eingabe aller Einzelergebnisse beim Solo
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Rohpunkte je Spieler (vor Bock-Multiplikator):",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        gameData.players.forEach { player ->
+                            val isSolo = player.id == state.soloPlayerId
+                            val isSitting = player.id == state.sittingOutPlayerId
+                            val rawPts = state.manualRawPoints[player.id] ?: 0
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (isSolo) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    IconButton(
-                                        onClick = { viewModel.setManualPoint(player.id, rawPts - 1) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(Icons.Default.Remove, contentDescription = "-1")
+                                    PlayerAvatar(player = player, size = 26.dp, showBorder = false)
+                                    Column {
+                                        Text(
+                                            text = if (isSolo) "⭐ ${player.name} (Solospieler)" else player.name,
+                                            fontWeight = if (isSolo) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                        if (isSitting) {
+                                            Text("Setzt aus (0)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        } else if (!isSolo) {
+                                            Text("Gegenseite", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
-                                    Text(
-                                        text = if (rawPts > 0) "+$rawPts" else "$rawPts",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        color = if (rawPts > 0) PositiveGreen else if (rawPts < 0) NegativeRed else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    IconButton(
-                                        onClick = { viewModel.setManualPoint(player.id, rawPts + 1) },
-                                        modifier = Modifier.size(32.dp)
+                                }
+
+                                if (isSitting) {
+                                    Text("0 Pkt.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = "+1")
+                                        IconButton(
+                                            onClick = { viewModel.setManualPoint(player.id, rawPts - 1) },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("manual_minus_${player.id}")
+                                        ) {
+                                            Icon(Icons.Default.Remove, contentDescription = "-1")
+                                        }
+                                        Text(
+                                            text = if (rawPts > 0) "+$rawPts" else "$rawPts",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = if (rawPts > 0) PositiveGreen else if (rawPts < 0) NegativeRed else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.testTag("manual_points_${player.id}")
+                                        )
+                                        IconButton(
+                                            onClick = { viewModel.setManualPoint(player.id, rawPts + 1) },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("manual_plus_${player.id}")
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = "+1")
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-
-            // Hochzeit Zuordnung
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        tint = WeddingPink,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "Hochzeit in dieser Runde (optional):",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                if (state.hochzeitPlayerId != null) {
-                    val hp = gameData.players.find { it.id == state.hochzeitPlayerId }
-                    val weddingGain = (gameData.players.size - 1) * multiplier
-                    val weddingLoss = multiplier
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(WeddingPink.copy(alpha = 0.12f))
-                            .padding(8.dp)
+            } else {
+                // ==============================
+                // NORMALES SPIEL: RE / KONTRA
+                // ==============================
+                // Modus-Wahl: Team vs. Manuell
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = state.entryMode == EntryMode.TEAM,
+                        onClick = { viewModel.setEntryMode(EntryMode.TEAM) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
                     ) {
-                        Text(
-                            text = "💍 Hochzeitswertung: ${hp?.name} erhält +$weddingGain Pkt., alle anderen Spieler je -$weddingLoss Pkt. (${multiplier}x Bock)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = WeddingPink
-                        )
+                        Text("Team (Re / Kontra)")
+                    }
+                    SegmentedButton(
+                        selected = state.entryMode == EntryMode.MANUAL,
+                        onClick = { viewModel.setEntryMode(EntryMode.MANUAL) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                    ) {
+                        Text("Freie Punkteingabe")
                     }
                 }
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    gameData.players.filter { it.id != state.sittingOutPlayerId }.forEach { player ->
-                        val isHochzeit = state.hochzeitPlayerId == player.id
-                        FilterChip(
-                            selected = isHochzeit,
-                            onClick = { viewModel.setHochzeitPlayer(player.id) },
-                            label = { Text(player.name) },
-                            leadingIcon = {
-                                if (isHochzeit) Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                                else PlayerAvatar(player = player, size = 16.dp, showBorder = false)
-                            }
+                if (state.entryMode == EntryMode.TEAM) {
+                    // Team-Modus: Gewinner-Partei
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Siegerpartei:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.setWinningParty(WinningParty.RE) },
+                                modifier = Modifier.weight(1f),
+                                colors = if (state.winningParty == WinningParty.RE) {
+                                    ButtonDefaults.outlinedButtonColors(containerColor = PositiveGreen.copy(alpha = 0.15f))
+                                } else ButtonDefaults.outlinedButtonColors()
+                            ) {
+                                Text(
+                                    text = "Re gewinnt",
+                                    fontWeight = if (state.winningParty == WinningParty.RE) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (state.winningParty == WinningParty.RE) PositiveGreen else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.setWinningParty(WinningParty.KONTRA) },
+                                modifier = Modifier.weight(1f),
+                                colors = if (state.winningParty == WinningParty.KONTRA) {
+                                    ButtonDefaults.outlinedButtonColors(containerColor = PositiveGreen.copy(alpha = 0.15f))
+                                } else ButtonDefaults.outlinedButtonColors()
+                            ) {
+                                Text(
+                                    text = "Kontra gewinnt",
+                                    fontWeight = if (state.winningParty == WinningParty.KONTRA) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (state.winningParty == WinningParty.KONTRA) PositiveGreen else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    // Re-Spieler auswählen (2 Spieler)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Re-Team Spieler (${state.rePlayerIds.size}/2):",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            gameData.players.filter { it.id != state.sittingOutPlayerId }.forEach { player ->
+                                val isRe = state.rePlayerIds.contains(player.id)
+                                FilterChip(
+                                    selected = isRe,
+                                    onClick = { viewModel.toggleRePlayer(player.id) },
+                                    label = { Text(player.name) },
+                                    leadingIcon = { PlayerAvatar(player = player, size = 18.dp, showBorder = false) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Basis-Spielpunkte Stepper
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Erspielte Spielpunkte (vor Bock):",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            IconButton(
+                                onClick = { viewModel.setBasePoints(state.basePoints - 1) },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "-1")
+                            }
+                            Text(
+                                text = "${state.basePoints} Pkt.",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            IconButton(
+                                onClick = { viewModel.setBasePoints(state.basePoints + 1) },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "+1")
+                            }
+
+                            // Schnellwahl-Chips
+                            listOf(0, 1, 2, 3, 4, 5, 6).forEach { pts ->
+                                FilterChip(
+                                    selected = state.basePoints == pts,
+                                    onClick = { viewModel.setBasePoints(pts) },
+                                    label = { Text(if (pts == 0) "0 (Nur Hz)" else "$pts") },
+                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Freie manuelle Eingabe
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Punkte pro Spieler vor Multiplikator:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        gameData.players.forEach { player ->
+                            val isSitting = player.id == state.sittingOutPlayerId
+                            val rawPts = state.manualRawPoints[player.id] ?: 0
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    PlayerAvatar(player = player, size = 26.dp, showBorder = false)
+                                    Text(player.name, fontWeight = FontWeight.Medium)
+                                }
+
+                                if (isSitting) {
+                                    Text("Setzt aus (0)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        IconButton(
+                                            onClick = { viewModel.setManualPoint(player.id, rawPts - 1) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Remove, contentDescription = "-1")
+                                        }
+                                        Text(
+                                            text = if (rawPts > 0) "+$rawPts" else "$rawPts",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = if (rawPts > 0) PositiveGreen else if (rawPts < 0) NegativeRed else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        IconButton(
+                                            onClick = { viewModel.setManualPoint(player.id, rawPts + 1) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = "+1")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Hochzeit Zuordnung (nur bei normalem Spiel)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = WeddingPink,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Hochzeit in dieser Runde (optional):",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    if (state.hochzeitPlayerId != null) {
+                        val hp = gameData.players.find { it.id == state.hochzeitPlayerId }
+                        val weddingGain = (gameData.players.size - 1) * multiplier
+                        val weddingLoss = multiplier
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(WeddingPink.copy(alpha = 0.12f))
+                                .padding(8.dp)
+                        ) {
+                            Text(
+                                text = "💍 Hochzeitswertung: ${hp?.name} erhält +$weddingGain Pkt., alle anderen Spieler je -$weddingLoss Pkt. (${multiplier}x Bock)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = WeddingPink
+                            )
+                        }
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        gameData.players.filter { it.id != state.sittingOutPlayerId }.forEach { player ->
+                            val isHochzeit = state.hochzeitPlayerId == player.id
+                            FilterChip(
+                                selected = isHochzeit,
+                                onClick = { viewModel.setHochzeitPlayer(player.id) },
+                                label = { Text(player.name) },
+                                leadingIcon = {
+                                    if (isHochzeit) Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    else PlayerAvatar(player = player, size = 16.dp, showBorder = false)
+                                }
+                            )
+                        }
                     }
                 }
             }

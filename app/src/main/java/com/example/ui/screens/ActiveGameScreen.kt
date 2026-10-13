@@ -35,6 +35,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.example.data.model.GameType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -233,7 +235,14 @@ fun ActiveGameScreen(
             }
 
             if (selectedTab == 0) {
-                // Runden-Liste
+                // Runden-Liste mit Spieltyp-Filter
+                var roundFilter by remember { mutableStateOf<GameType?>(null) }
+                val filteredRounds = when (roundFilter) {
+                    null -> gameData.roundsWithScores
+                    GameType.NORMAL -> gameData.roundsWithScores.filter { !it.round.isSolo }
+                    GameType.SOLO -> gameData.roundsWithScores.filter { it.round.isSolo }
+                }
+
                 if (gameData.roundsWithScores.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -264,7 +273,29 @@ fun ActiveGameScreen(
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(gameData.roundsWithScores.reversed(), key = { it.round.id }) { roundWithScores ->
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = roundFilter == null,
+                                    onClick = { roundFilter = null },
+                                    label = { Text("Alle (${gameData.roundCount})") }
+                                )
+                                FilterChip(
+                                    selected = roundFilter == GameType.NORMAL,
+                                    onClick = { roundFilter = GameType.NORMAL },
+                                    label = { Text("Normal (${gameData.normalRoundCount})") }
+                                )
+                                FilterChip(
+                                    selected = roundFilter == GameType.SOLO,
+                                    onClick = { roundFilter = GameType.SOLO },
+                                    label = { Text("⭐ Solo (${gameData.soloRoundCount})") }
+                                )
+                            }
+                        }
+                        items(filteredRounds.reversed(), key = { it.round.id }) { roundWithScores ->
                             RoundCard(
                                 roundWithScores = roundWithScores,
                                 gameData = gameData,
@@ -278,7 +309,8 @@ fun ActiveGameScreen(
                     }
                 }
             } else {
-                // Liniendiagramm Punkteverlauf
+                // Liniendiagramm Punkteverlauf mit Spieltyp-Filter
+                var chartFilter by remember { mutableStateOf<GameType?>(null) }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -286,8 +318,30 @@ fun ActiveGameScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = chartFilter == null,
+                                onClick = { chartFilter = null },
+                                label = { Text("Alle Runden") }
+                            )
+                            FilterChip(
+                                selected = chartFilter == GameType.NORMAL,
+                                onClick = { chartFilter = GameType.NORMAL },
+                                label = { Text("Nur Normale") }
+                            )
+                            FilterChip(
+                                selected = chartFilter == GameType.SOLO,
+                                onClick = { chartFilter = GameType.SOLO },
+                                label = { Text("⭐ Nur Solospiele") }
+                            )
+                        }
+                    }
+                    item {
                         ScoreLineChart(
-                            progression = gameData.getCumulativeScoreProgression(),
+                            progression = gameData.getCumulativeScoreProgression(filterGameType = chartFilter),
                             players = gameData.players
                         )
                     }
@@ -370,6 +424,8 @@ fun ActiveGameScreen(
             sittingOutPlayerId = state.sittingOutPlayerId,
             bockTriggersCount = state.bockTriggersCount,
             isSubmitting = state.isSubmitting,
+            gameType = state.gameType,
+            soloPlayerId = state.soloPlayerId,
             onConfirm = { viewModel.commitRound() },
             onDismiss = { viewModel.dismissSummaryDialog() }
         )
@@ -594,6 +650,22 @@ private fun RoundCard(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
+                    if (round.isSolo) {
+                        val soloPlayer = gameData.players.find { it.id == round.soloPlayerId }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "⭐ Solo: ${soloPlayer?.name ?: "Solospieler"}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     if (round.bockLevel > 1) {
                         Box(
                             modifier = Modifier
@@ -609,7 +681,7 @@ private fun RoundCard(
                             )
                         }
                     }
-                    if (round.hochzeitPlayerId != null) {
+                    if (!round.isSolo && round.hochzeitPlayerId != null) {
                         val hp = gameData.players.find { it.id == round.hochzeitPlayerId }
                         val weddingGain = (gameData.players.size - 1) * round.bockMultiplier
                         val weddingLoss = round.bockMultiplier
@@ -642,6 +714,26 @@ private fun RoundCard(
                     IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Default.Delete, contentDescription = "Löschen", modifier = Modifier.size(16.dp), tint = NegativeRed)
                     }
+                }
+            }
+
+            // Teams bei Solospiel deutlich anzeigen
+            if (round.isSolo) {
+                val soloPlayer = gameData.players.find { it.id == round.soloPlayerId }
+                val opponents = gameData.players.filter { it.id != round.soloPlayerId && it.id != round.sittingOutPlayerId }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "⭐ Solospieler: ${soloPlayer?.name ?: "-"}  •  Gegenseite: ${opponents.joinToString { it.name }}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
 

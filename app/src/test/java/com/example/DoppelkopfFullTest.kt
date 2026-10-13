@@ -7,6 +7,7 @@ import com.example.data.backup.BackupManager
 import com.example.data.local.AppDatabase
 import com.example.data.model.BockCalculator
 import com.example.data.model.Game
+import com.example.data.model.GameType
 import com.example.data.repository.DoppelkopfRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -482,5 +483,611 @@ class DoppelkopfFullTest {
         assertEquals(-4, data5?.playerTotals?.get(p4))
         assertEquals(-4, data5?.playerTotals?.get(p5))
     }
+
+    @Test
+    fun testSoloGameFourPlayers() = runBlocking {
+        val p1 = repository.insertPlayer("Soloist")
+        val p2 = repository.insertPlayer("Opponent1")
+        val p3 = repository.insertPlayer("Opponent2")
+        val p4 = repository.insertPlayer("Opponent3")
+
+        val gameId = repository.createGame("4er Solo Partie", listOf(p1, p2, p3, p4))
+
+        // Solospiel: P1 gewinnt (Solo gewinnt gegen 3 Gegenspieler)
+        // P1 erhält +3 Punkte, P2, P3, P4 erhalten je -1 Punkt
+        val resultRoundId = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 3, p2 to -1, p3 to -1, p4 to -1),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        ).getOrThrow()
+
+        val gameData = repository.getFullGameDataSync(gameId)
+        assertNotNull(gameData)
+        assertEquals(1, gameData?.roundCount)
+        assertEquals(1, gameData?.soloRoundCount)
+        assertEquals(0, gameData?.normalRoundCount)
+
+        val round = gameData?.roundsWithScores?.first()?.round
+        assertNotNull(round)
+        assertEquals(GameType.SOLO.name, round?.gameType)
+        assertEquals(p1, round?.soloPlayerId)
+        assertTrue(round?.isSolo == true)
+
+        assertEquals(3, gameData?.playerTotals?.get(p1))
+        assertEquals(-1, gameData?.playerTotals?.get(p2))
+        assertEquals(-1, gameData?.playerTotals?.get(p3))
+        assertEquals(-1, gameData?.playerTotals?.get(p4))
+    }
+
+    @Test
+    fun testSoloGameFivePlayers() = runBlocking {
+        val p1 = repository.insertPlayer("S1")
+        val p2 = repository.insertPlayer("S2")
+        val p3 = repository.insertPlayer("S3")
+        val p4 = repository.insertPlayer("S4")
+        val p5 = repository.insertPlayer("S5")
+
+        val gameId = repository.createGame("5er Solo Partie", listOf(p1, p2, p3, p4, p5))
+
+        // P5 sitzt aus (Geber). P1 spielt Solo gegen P2, P3, P4.
+        // Solo verliert: P1 erhält -3 Punkte, P2, P3, P4 erhalten je +1 Punkt, P5 erhält 0 Punkte
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to -3, p2 to 1, p3 to 1, p4 to 1, p5 to 0),
+            sittingOutPlayerId = p5,
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        )
+
+        val gameData = repository.getFullGameDataSync(gameId)
+        assertEquals(-3, gameData?.playerTotals?.get(p1))
+        assertEquals(1, gameData?.playerTotals?.get(p2))
+        assertEquals(1, gameData?.playerTotals?.get(p3))
+        assertEquals(1, gameData?.playerTotals?.get(p4))
+        assertEquals(0, gameData?.playerTotals?.get(p5))
+    }
+
+    @Test
+    fun testSelectAndSwitchSoloPlayer() = runBlocking {
+        val p1 = repository.insertPlayer("Alice")
+        val p2 = repository.insertPlayer("Bob")
+        val p3 = repository.insertPlayer("Charlie")
+        val p4 = repository.insertPlayer("Dave")
+
+        val gameId = repository.createGame("Solo Wechsel Test", listOf(p1, p2, p3, p4))
+
+        // Zuerst Runde mit P1 als Solospieler buchen
+        val roundId = repository.addRound(
+            gameId = gameId,
+            basePoints = 2,
+            rawPlayerPoints = mapOf(p1 to 6, p2 to -2, p3 to -2, p4 to -2),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        ).getOrThrow()
+
+        var gameData = repository.getFullGameDataSync(gameId)
+        assertEquals(p1, gameData?.roundsWithScores?.first()?.round?.soloPlayerId)
+
+        // Nachträgliches Wechseln des Solospielers auf P2
+        repository.updateRound(
+            roundId = roundId,
+            gameId = gameId,
+            basePoints = 2,
+            rawPlayerPoints = mapOf(p2 to 6, p1 to -2, p3 to -2, p4 to -2),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p2
+        )
+
+        gameData = repository.getFullGameDataSync(gameId)
+        val updatedRound = gameData?.roundsWithScores?.first()?.round
+        assertEquals(p2, updatedRound?.soloPlayerId)
+        assertEquals(-2, gameData?.playerTotals?.get(p1))
+        assertEquals(6, gameData?.playerTotals?.get(p2))
+        assertEquals(-2, gameData?.playerTotals?.get(p3))
+        assertEquals(-2, gameData?.playerTotals?.get(p4))
+    }
+
+    @Test
+    fun testManualScoreInputSoloGame() = runBlocking {
+        val p1 = repository.insertPlayer("M1")
+        val p2 = repository.insertPlayer("M2")
+        val p3 = repository.insertPlayer("M3")
+        val p4 = repository.insertPlayer("M4")
+
+        val gameId = repository.createGame("Manuelle Punkte Solo", listOf(p1, p2, p3, p4))
+
+        // Individuelle Punktvergabe (z.B. spezielle lokale Spielpunkte)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 0,
+            rawPlayerPoints = mapOf(p1 to 9, p2 to -3, p3 to -3, p4 to -3),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        )
+
+        val gameData = repository.getFullGameDataSync(gameId)
+        assertEquals(9, gameData?.playerTotals?.get(p1))
+        assertEquals(-3, gameData?.playerTotals?.get(p2))
+        assertEquals(-3, gameData?.playerTotals?.get(p3))
+        assertEquals(-3, gameData?.playerTotals?.get(p4))
+    }
+
+    @Test
+    fun testBockMultiplierAppliedToSoloGame() = runBlocking {
+        val p1 = repository.insertPlayer("B1")
+        val p2 = repository.insertPlayer("B2")
+        val p3 = repository.insertPlayer("B3")
+        val p4 = repository.insertPlayer("B4")
+
+        val gameId = repository.createGame("Bock Multiplikator Solo", listOf(p1, p2, p3, p4))
+
+        // Runde 1: Normalspiel löst Doppelbock aus (+2 Auslöser) -> Bockstufe 3 (4x)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 2
+        )
+
+        // Runde 2: Solospiel läuft nun unter Bockstufe 3 (4x Multiplikator)!
+        // Rohpunkte: P1 gewinnt mit +3, Gegenspieler je -1
+        // Endpunkte nach 4x Bock: P1 erhält +12 Punkte, Gegenspieler erhalten je -4 Punkte
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 3, p2 to -1, p3 to -1, p4 to -1),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        )
+
+        val gameData = repository.getFullGameDataSync(gameId)
+        val round2 = gameData?.roundsWithScores?.find { it.round.roundNumber == 2 }
+        assertNotNull(round2)
+        assertEquals(3, round2?.round?.bockLevel)
+        assertEquals(4, round2?.round?.bockMultiplier)
+        assertTrue(round2?.round?.isSolo == true)
+
+        val p1Round2Score = round2?.scores?.find { it.playerId == p1 }?.finalPoints
+        val p2Round2Score = round2?.scores?.find { it.playerId == p2 }?.finalPoints
+        assertEquals(12, p1Round2Score)
+        assertEquals(-4, p2Round2Score)
+    }
+
+    @Test
+    fun testSoloStatisticsUpdate() = runBlocking {
+        val p1 = repository.insertPlayer("StatP1")
+        val p2 = repository.insertPlayer("StatP2")
+        val p3 = repository.insertPlayer("StatP3")
+        val p4 = repository.insertPlayer("StatP4")
+
+        val gameId = repository.createGame("Statistik Test Game", listOf(p1, p2, p3, p4))
+
+        // Runde 1: Normales Spiel (P1 und P2 gewinnen Re)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 2,
+            rawPlayerPoints = mapOf(p1 to 2, p2 to 2, p3 to -2, p4 to -2),
+            gameType = GameType.NORMAL.name
+        )
+
+        // Runde 2: Solospiel von P1 (P1 gewinnt +6, P2, P3, P4 je -2)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 2,
+            rawPlayerPoints = mapOf(p1 to 6, p2 to -2, p3 to -2, p4 to -2),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        )
+
+        // Runde 3: Solospiel von P2 (P2 verliert: P2 -6, P1, P3, P4 je +2)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 2,
+            rawPlayerPoints = mapOf(p2 to -6, p1 to 2, p3 to 2, p4 to 2),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p2
+        )
+
+        val allStats = repository.computeAllPlayerStatsSync()
+        val s1 = allStats.find { it.player.id == p1 }
+        val s2 = allStats.find { it.player.id == p2 }
+
+        assertNotNull(s1)
+        assertNotNull(s2)
+
+        // P1 Auswertung:
+        // Normalspiele: 1 Runde gespielt, +2 Punkte
+        assertEquals(1, s1?.normalRoundsPlayed)
+        assertEquals(2, s1?.normalPoints)
+        // Als Solospieler: 1 Runde gespielt, 1 Sieg, +6 Punkte
+        assertEquals(1, s1?.soloRoundsAsSoloist)
+        assertEquals(1, s1?.soloWinsAsSoloist)
+        assertEquals(6, s1?.soloPointsAsSoloist)
+        // Als Gegenspieler: 1 Runde gegen P2's Solo, 1 Sieg (da P2 verlor und P1 +2 bekam), +2 Punkte
+        assertEquals(1, s1?.soloRoundsAsOpponent)
+        assertEquals(1, s1?.soloWinsAsOpponent)
+        assertEquals(2, s1?.soloPointsAsOpponent)
+
+        // P2 Auswertung:
+        // Normalspiele: 1 Runde gespielt, +2 Punkte
+        assertEquals(1, s2?.normalRoundsPlayed)
+        assertEquals(2, s2?.normalPoints)
+        // Als Solospieler: 1 Runde gespielt, 0 Siege, -6 Punkte
+        assertEquals(1, s2?.soloRoundsAsSoloist)
+        assertEquals(0, s2?.soloWinsAsSoloist)
+        assertEquals(-6, s2?.soloPointsAsSoloist)
+        // Als Gegenspieler: 1 Runde gegen P1's Solo, 0 Siege, -2 Punkte
+        assertEquals(1, s2?.soloRoundsAsOpponent)
+        assertEquals(0, s2?.soloWinsAsOpponent)
+        assertEquals(-2, s2?.soloPointsAsOpponent)
+    }
+
+    @Test
+    fun testEditAndDeleteSoloRound() = runBlocking {
+        val p1 = repository.insertPlayer("E1")
+        val p2 = repository.insertPlayer("E2")
+        val p3 = repository.insertPlayer("E3")
+        val p4 = repository.insertPlayer("E4")
+
+        val gameId = repository.createGame("Edit Delete Solo", listOf(p1, p2, p3, p4))
+
+        // Runde 1: Solo P1 gewinnt (+3)
+        val r1 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 3, p2 to -1, p3 to -1, p4 to -1),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        ).getOrThrow()
+
+        // Runde 2: Normales Spiel P1 & P2 gewinnen (+2)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 2,
+            rawPlayerPoints = mapOf(p1 to 2, p2 to 2, p3 to -2, p4 to -2),
+            gameType = GameType.NORMAL.name
+        )
+
+        var data = repository.getFullGameDataSync(gameId)
+        assertEquals(5, data?.playerTotals?.get(p1))
+        assertEquals(1, data?.playerTotals?.get(p2))
+
+        // Runde 1 bearbeiten: Punkte korrigieren auf Solo verliert (-3)
+        repository.updateRound(
+            roundId = r1,
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to -3, p2 to 1, p3 to 1, p4 to 1),
+            gameType = GameType.SOLO.name,
+            soloPlayerId = p1
+        )
+
+        data = repository.getFullGameDataSync(gameId)
+        assertEquals(-1, data?.playerTotals?.get(p1)) // -3 + 2 = -1
+        assertEquals(3, data?.playerTotals?.get(p2))  // 1 + 2 = 3
+
+        // Runde 1 löschen: nur noch Runde 2 übrig
+        repository.deleteRound(r1)
+        data = repository.getFullGameDataSync(gameId)
+        assertEquals(1, data?.roundCount)
+        assertEquals(2, data?.playerTotals?.get(p1))
+        assertEquals(2, data?.playerTotals?.get(p2))
+    }
+
+    @Test
+    fun testBockCalculatorUnitLogic() {
+        // Dauer je Spieleranzahl
+        assertEquals(4, BockCalculator.getDurationForPlayerCount(4))
+        assertEquals(5, BockCalculator.getDurationForPlayerCount(5))
+
+        // Level und Multiplikatoren aus Anzahl aktiver Folgen
+        assertEquals(1, BockCalculator.calculateLevelFromActiveSeriesCount(0))
+        assertEquals(1, BockCalculator.getMultiplierForActiveSeriesCount(0)) // 1x
+
+        assertEquals(2, BockCalculator.calculateLevelFromActiveSeriesCount(1))
+        assertEquals(2, BockCalculator.getMultiplierForActiveSeriesCount(1)) // 2x
+
+        assertEquals(3, BockCalculator.calculateLevelFromActiveSeriesCount(2))
+        assertEquals(4, BockCalculator.getMultiplierForActiveSeriesCount(2)) // 4x
+
+        assertEquals(4, BockCalculator.calculateLevelFromActiveSeriesCount(3))
+        assertEquals(8, BockCalculator.getMultiplierForActiveSeriesCount(3)) // 8x
+
+        assertEquals(8, BockCalculator.calculateLevelFromActiveSeriesCount(7))
+        assertEquals(128, BockCalculator.getMultiplierForActiveSeriesCount(7)) // 128x
+
+        // Capping bei Stufe 8 (128x)
+        assertEquals(8, BockCalculator.calculateLevelFromActiveSeriesCount(8))
+        assertEquals(128, BockCalculator.getMultiplierForActiveSeriesCount(8))
+        assertEquals(8, BockCalculator.calculateLevelFromActiveSeriesCount(15))
+        assertEquals(128, BockCalculator.getMultiplierForActiveSeriesCount(15))
+
+        // Serialization & Parsing
+        assertEquals(listOf(4, 2), BockCalculator.parseActiveSeries("4,2"))
+        assertEquals("4,2", BockCalculator.serializeActiveSeries(listOf(4, 2)))
+        assertEquals(emptyList<Int>(), BockCalculator.parseActiveSeries(""))
+        assertEquals("", BockCalculator.serializeActiveSeries(emptyList()))
+
+        // advanceActiveSeries: Dekrementierung, Entfernung abgelaufener Folgen und neue Auslösungen
+        // Start: [2, 1], 1 neuer Auslöser mit Dauer 4
+        // [2-1, 1-1] -> [1] (1-1=0 abgelaufen und entfernt) + [4] -> [1, 4]
+        val advanced = BockCalculator.advanceActiveSeries(listOf(2, 1), newTriggers = 1, durationPerSeries = 4)
+        assertEquals(listOf(1, 4), advanced)
+    }
+
+    @Test
+    fun testOverlappingBockSeriesFourPlayers() = runBlocking {
+        val p1 = repository.insertPlayer("A")
+        val p2 = repository.insertPlayer("B")
+        val p3 = repository.insertPlayer("C")
+        val p4 = repository.insertPlayer("D")
+
+        val gameId = repository.createGame("4er Überlappende Böcke", listOf(p1, p2, p3, p4))
+
+        // Runde 1: Normal (1x). 1 Bockauslöser! (Dauer 4 Runden)
+        val r1 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 1
+        ).getOrThrow()
+
+        var data = repository.getFullGameDataSync(gameId)
+        val round1 = data?.roundsWithScores?.find { it.round.id == r1 }?.round
+        assertEquals(1, round1?.bockLevel)
+        assertEquals(1, round1?.bockMultiplier)
+        assertEquals(2, round1?.resultingBockLevel)
+        assertEquals(2, round1?.resultingBockMultiplier)
+        assertEquals(4, round1?.remainingBockRoundsAfter)
+        assertEquals(2, data?.game?.currentBockLevel)
+        assertEquals(4, data?.game?.remainingBockRounds)
+        assertEquals("4", data?.game?.activeBockSeries)
+
+        // Runde 2: Gespielt mit Stufe 2 (2x). 0 Auslöser.
+        // Folge 1 Restlaufzeit sinkt von 4 auf 3.
+        val r2 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 0
+        ).getOrThrow()
+
+        data = repository.getFullGameDataSync(gameId)
+        val round2 = data?.roundsWithScores?.find { it.round.id == r2 }?.round
+        assertEquals(2, round2?.bockLevel)
+        assertEquals(2, round2?.bockMultiplier)
+        assertEquals(2, round2?.resultingBockLevel)
+        assertEquals(2, round2?.resultingBockMultiplier)
+        assertEquals(3, round2?.remainingBockRoundsAfter)
+        assertEquals("3", data?.game?.activeBockSeries)
+
+        // Runde 3: Gespielt mit Stufe 2 (2x). Weiterer Bock ausgelöst! (Überlappung!)
+        // Folge 1 sinkt von 3 auf 2. Neue Folge 2 startet mit 4. Aktive Folgen: [2, 4].
+        // Ab nächster Runde: 2 aktive Folgen -> Stufe 3 (4x Multiplikator)!
+        val r3 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 1
+        ).getOrThrow()
+
+        data = repository.getFullGameDataSync(gameId)
+        val round3 = data?.roundsWithScores?.find { it.round.id == r3 }?.round
+        assertEquals(2, round3?.bockLevel)
+        assertEquals(2, round3?.bockMultiplier)
+        assertEquals(3, round3?.resultingBockLevel)
+        assertEquals(4, round3?.resultingBockMultiplier)
+        assertEquals(4, round3?.remainingBockRoundsAfter)
+        assertEquals(3, data?.game?.currentBockLevel)
+        assertEquals("2,4", data?.game?.activeBockSeries)
+
+        // Runde 4: Gespielt mit Stufe 3 (4x Multiplikator!). 0 Auslöser.
+        // Folgen sinken auf [1, 3].
+        val r4 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 0
+        ).getOrThrow()
+
+        data = repository.getFullGameDataSync(gameId)
+        val round4 = data?.roundsWithScores?.find { it.round.id == r4 }?.round
+        assertEquals(3, round4?.bockLevel)
+        assertEquals(4, round4?.bockMultiplier)
+        assertEquals(3, round4?.resultingBockLevel)
+        assertEquals(4, round4?.resultingBockMultiplier)
+        assertEquals(3, round4?.remainingBockRoundsAfter)
+        assertEquals("1,3", data?.game?.activeBockSeries)
+
+        // Runde 5: Gespielt mit Stufe 3 (4x Multiplikator!). 0 Auslöser.
+        // Folge 1 läuft nach dieser Runde ab (1 - 1 = 0). Folge 2 sinkt auf 2 -> [2].
+        // Ab nächster Runde: Nur noch 1 aktive Folge -> Stufe 2 (2x Multiplikator)!
+        val r5 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 0
+        ).getOrThrow()
+
+        data = repository.getFullGameDataSync(gameId)
+        val round5 = data?.roundsWithScores?.find { it.round.id == r5 }?.round
+        assertEquals(3, round5?.bockLevel)
+        assertEquals(4, round5?.bockMultiplier)
+        assertEquals(2, round5?.resultingBockLevel) // Sinkt wieder auf Stufe 2!
+        assertEquals(2, round5?.resultingBockMultiplier) // Multiplikator 2x ab nächster Runde!
+        assertEquals(2, round5?.remainingBockRoundsAfter)
+        assertEquals(2, data?.game?.currentBockLevel)
+        assertEquals("2", data?.game?.activeBockSeries)
+
+        // Runde 6: Gespielt mit Stufe 2 (2x). 0 Auslöser.
+        // Folge 2 sinkt auf 1 -> [1].
+        val r6 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 0
+        ).getOrThrow()
+
+        data = repository.getFullGameDataSync(gameId)
+        val round6 = data?.roundsWithScores?.find { it.round.id == r6 }?.round
+        assertEquals(2, round6?.bockLevel)
+        assertEquals(2, round6?.bockMultiplier)
+        assertEquals("1", data?.game?.activeBockSeries)
+
+        // Runde 7: Gespielt mit Stufe 2 (2x). 0 Auslöser.
+        // Folge 2 läuft nach dieser Runde ab (1 - 1 = 0) -> [].
+        // Ab nächster Runde: Keine Bockfolgen mehr aktiv -> Stufe 1 (1x)!
+        val r7 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 0
+        ).getOrThrow()
+
+        data = repository.getFullGameDataSync(gameId)
+        val round7 = data?.roundsWithScores?.find { it.round.id == r7 }?.round
+        assertEquals(2, round7?.bockLevel)
+        assertEquals(2, round7?.bockMultiplier)
+        assertEquals(1, round7?.resultingBockLevel) // Zurück auf Normalspiel!
+        assertEquals(1, round7?.resultingBockMultiplier)
+        assertEquals(0, round7?.remainingBockRoundsAfter)
+        assertEquals(1, data?.game?.currentBockLevel)
+        assertEquals(0, data?.game?.remainingBockRounds)
+        assertEquals("", data?.game?.activeBockSeries)
+
+        // Runde 8: Gespielt mit Normalstufe 1 (1x).
+        val r8 = repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1),
+            bockTriggersCount = 0
+        ).getOrThrow()
+
+        data = repository.getFullGameDataSync(gameId)
+        val round8 = data?.roundsWithScores?.find { it.round.id == r8 }?.round
+        assertEquals(1, round8?.bockLevel)
+        assertEquals(1, round8?.bockMultiplier)
+
+        // Punkteprüfung für Spieler A über alle 8 Runden:
+        // R1: 1 * 1x = 1
+        // R2: 1 * 2x = 2
+        // R3: 1 * 2x = 2
+        // R4: 1 * 4x = 4
+        // R5: 1 * 4x = 4
+        // R6: 1 * 2x = 2
+        // R7: 1 * 2x = 2
+        // R8: 1 * 1x = 1
+        // Summe: 1 + 2 + 2 + 4 + 4 + 2 + 2 + 1 = 18 Punkte!
+        assertEquals(18, data?.playerTotals?.get(p1))
+        assertEquals(18, data?.playerTotals?.get(p2))
+        assertEquals(-18, data?.playerTotals?.get(p3))
+        assertEquals(-18, data?.playerTotals?.get(p4))
+    }
+
+    @Test
+    fun testOverlappingBockSeriesFivePlayers() = runBlocking {
+        val p1 = repository.insertPlayer("P1")
+        val p2 = repository.insertPlayer("P2")
+        val p3 = repository.insertPlayer("P3")
+        val p4 = repository.insertPlayer("P4")
+        val p5 = repository.insertPlayer("P5")
+
+        val gameId = repository.createGame("5er Überlappende Böcke", listOf(p1, p2, p3, p4, p5))
+
+        // In einer 5-Spieler-Partie muss jede Bockfolge genau 5 Spielrunden dauern!
+        val game = repository.getGameByIdSync(gameId)
+        assertEquals(5, game?.playerCount)
+        assertEquals(5, game?.bockRoundsPerTrigger)
+
+        // Runde 1: Normalspiel (1x). 1 Bockauslöser (Dauer 5 Runden). P5 sitzt aus.
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1, p5 to 0),
+            sittingOutPlayerId = p5,
+            bockTriggersCount = 1
+        )
+
+        var data = repository.getFullGameDataSync(gameId)
+        assertEquals(2, data?.game?.currentBockLevel)
+        assertEquals(5, data?.game?.remainingBockRounds)
+        assertEquals("5", data?.game?.activeBockSeries)
+
+        // Runde 2: Stufe 2 (2x). Weiterer Bockauslöser! P1 sitzt aus.
+        // Folge 1 sinkt von 5 auf 4. Folge 2 startet mit 5. Aktive Folgen: [4, 5].
+        // 2 aktive Folgen -> Stufe 3 (4x Multiplikator ab nächster Runde).
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 0, p2 to 1, p3 to 1, p4 to -1, p5 to -1),
+            sittingOutPlayerId = p1,
+            bockTriggersCount = 1
+        )
+
+        data = repository.getFullGameDataSync(gameId)
+        assertEquals(3, data?.game?.currentBockLevel)
+        assertEquals(5, data?.game?.remainingBockRounds) // max(4, 5) = 5
+        assertEquals("4,5", data?.game?.activeBockSeries)
+
+        // Runden 3, 4, 5, 6 laufen alle mit 4x (Stufe 3):
+        // Nach R3: [3, 4] -> Stufe 3
+        // Nach R4: [2, 3] -> Stufe 3
+        // Nach R5: [1, 2] -> Stufe 3
+        // Nach R6: Folge 1 läuft nach 5 Runden ab (1 - 1 = 0)! Folge 2 hat noch 1 Runde übrig -> [1] -> Stufe 2 (2x)
+        for (i in 3..6) {
+            val sitting = when (i) {
+                3 -> p2
+                4 -> p3
+                5 -> p4
+                else -> p5
+            }
+            repository.addRound(
+                gameId = gameId,
+                basePoints = 1,
+                rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1, p5 to 0),
+                sittingOutPlayerId = sitting,
+                bockTriggersCount = 0
+            )
+        }
+
+        data = repository.getFullGameDataSync(gameId)
+        // Nach Runde 6 ist Folge 1 (die in Runde 1 ausgelöst wurde und in R2, R3, R4, R5, R6 aktiv war = genau 5 Runden) abgelaufen!
+        // Nur Folge 2 ist noch für 1 Runde aktiv -> Stufe 2 (2x)!
+        assertEquals(2, data?.game?.currentBockLevel)
+        assertEquals(1, data?.game?.remainingBockRounds)
+        assertEquals("1", data?.game?.activeBockSeries)
+
+        // Runde 7: Läuft mit Stufe 2 (2x). Nach dieser Runde läuft auch Folge 2 ab.
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1, p5 to 0),
+            sittingOutPlayerId = p1,
+            bockTriggersCount = 0
+        )
+
+        data = repository.getFullGameDataSync(gameId)
+        assertEquals(1, data?.game?.currentBockLevel)
+        assertEquals(0, data?.game?.remainingBockRounds)
+        assertEquals("", data?.game?.activeBockSeries)
+
+        // Runde 8: Wieder Normalspiel (1x).
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 1,
+            rawPlayerPoints = mapOf(p1 to 1, p2 to 1, p3 to -1, p4 to -1, p5 to 0),
+            sittingOutPlayerId = p2,
+            bockTriggersCount = 0
+        )
+
+        data = repository.getFullGameDataSync(gameId)
+        val round8 = data?.roundsWithScores?.last()?.round
+        assertEquals(1, round8?.bockLevel)
+        assertEquals(1, round8?.bockMultiplier)
+    }
 }
+
 

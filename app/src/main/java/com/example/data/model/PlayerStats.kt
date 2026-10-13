@@ -20,6 +20,7 @@ data class PlayerStats(
     val soloPointsAsSoloist: Int = 0, // Gesamtpunkte erzielt als Solospieler
     val soloWinsAsSoloist: Int = 0, // Gewonnene Solorunden (Punkte > 0)
     val soloRoundsAsOpponent: Int = 0, // Wie oft als Gegenspieler gegen Solo angetreten
+    val soloWinsAsOpponent: Int = 0, // Gewonnene Runden als Gegenspieler (Punkte > 0)
     val soloPointsAsOpponent: Int = 0, // Punkte erzielt als Gegenspieler gegen Solo
     val normalRoundsPlayed: Int = 0, // Runden in Normalspielen
     val normalPoints: Int = 0 // Punkte in Normalspielen

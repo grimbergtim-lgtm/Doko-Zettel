@@ -17,7 +17,8 @@ data class Game(
     val bockRoundsPerTrigger: Int = 4, // z.B. 4 oder 5 Runden pro Bock
     val notes: String = "",
     val initialBockLevel: Int = 1, // Ursprüngliche Start-Bockstufe
-    val initialRemainingBockRounds: Int = 0 // Ursprüngliche verbleibende Bockrunden
+    val initialRemainingBockRounds: Int = 0, // Ursprüngliche verbleibende Bockrunden
+    val activeBockSeries: String = "" // Restlaufzeiten der aktiven Bockfolgen als CSV, z. B. "3,1"
 ) {
     companion object {
         const val STATUS_IN_PROGRESS = "IN_PROGRESS"

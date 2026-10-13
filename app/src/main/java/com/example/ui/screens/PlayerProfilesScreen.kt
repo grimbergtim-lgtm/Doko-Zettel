@@ -377,6 +377,38 @@ private fun PlayerDetailDialog(
                         Text("Stufe ${stats.highestBockLevelPlayed}", fontWeight = FontWeight.Bold, color = BockOrange)
                     }
                 }
+
+                HorizontalDivider()
+                Text("Solo-Statistiken & Spieltyp-Vergleich:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Als Solospieler:", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "${stats.soloRoundsAsSoloist} Runden (${stats.soloWinsAsSoloist} Siege, ${if (stats.soloPointsAsSoloist > 0) "+${stats.soloPointsAsSoloist}" else "${stats.soloPointsAsSoloist}"} Pkt.)",
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Als Gegenspieler:", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "${stats.soloRoundsAsOpponent} Runden (${stats.soloWinsAsOpponent} Siege, ${if (stats.soloPointsAsOpponent > 0) "+${stats.soloPointsAsOpponent}" else "${stats.soloPointsAsOpponent}"} Pkt.)",
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Normalspiele (Runden/Pkt.):", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${stats.normalRoundsPlayed} Runden (${if (stats.normalPoints > 0) "+${stats.normalPoints}" else "${stats.normalPoints}"} Pkt.)", fontWeight = FontWeight.Medium)
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Punktevergleich Normal vs. Solo:", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "${stats.normalPoints} Pkt. (Normal) / ${stats.soloPointsAsSoloist + stats.soloPointsAsOpponent} Pkt. (Solo)",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         },
         confirmButton = {

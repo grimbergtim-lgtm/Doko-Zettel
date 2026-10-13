@@ -44,6 +44,7 @@ object BackupManager {
             obj.put("currentBockLevel", g.currentBockLevel)
             obj.put("remainingBockRounds", g.remainingBockRounds)
             obj.put("bockRoundsPerTrigger", g.bockRoundsPerTrigger)
+            obj.put("activeBockSeries", g.activeBockSeries)
             obj.put("notes", g.notes)
             gamesArray.put(obj)
         }
@@ -155,6 +156,7 @@ object BackupManager {
                         currentBockLevel = obj.optInt("currentBockLevel", 1),
                         remainingBockRounds = obj.optInt("remainingBockRounds", 0),
                         bockRoundsPerTrigger = obj.optInt("bockRoundsPerTrigger", 4),
+                        activeBockSeries = obj.optString("activeBockSeries", ""),
                         notes = obj.optString("notes", "")
                     )
                     database.gameDao().insertGame(game)

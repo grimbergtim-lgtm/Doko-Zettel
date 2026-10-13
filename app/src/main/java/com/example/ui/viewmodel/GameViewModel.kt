@@ -6,6 +6,7 @@ import com.example.data.model.BockCalculator
 import com.example.data.model.FullGameData
 import com.example.data.model.Game
 import com.example.data.model.GameRound
+import com.example.data.model.GameType
 import com.example.data.model.Player
 import com.example.data.repository.DoppelkopfRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class EntryMode {
-    TEAM,   // Re vs. Kontra mit automatischer Punktverteilung
+    TEAM,   // Re vs. Kontra bzw. Solo vs. Gegenseite mit automatischer Punktverteilung
     MANUAL  // Direkte manuelle Eingabe jedes Spielers
 }
 
@@ -57,6 +58,10 @@ data class GameUiState(
     val bockTriggersCount: Int = 0,
     val note: String = "",
 
+    // Solo-Spiel
+    val gameType: GameType = GameType.NORMAL,
+    val soloPlayerId: Long? = null,
+
     // Manuelle Bock-Korrektur
     val bockAdjustLevel: Int = 1,
     val bockAdjustRemaining: Int = 0
@@ -86,6 +91,9 @@ class GameViewModel(
     private val _bockTriggersCount = MutableStateFlow(0)
     private val _note = MutableStateFlow("")
 
+    private val _gameType = MutableStateFlow(GameType.NORMAL)
+    private val _soloPlayerId = MutableStateFlow<Long?>(null)
+
     private val _bockAdjustLevel = MutableStateFlow(1)
     private val _bockAdjustRemaining = MutableStateFlow(0)
 
@@ -108,7 +116,9 @@ class GameViewModel(
         _bockTriggersCount,
         _note,
         _bockAdjustLevel,
-        _bockAdjustRemaining
+        _bockAdjustRemaining,
+        _gameType,
+        _soloPlayerId
     ) { args: Array<Any?> ->
         val data = args[0] as FullGameData?
         @Suppress("UNCHECKED_CAST")
@@ -132,7 +142,9 @@ class GameViewModel(
             bockTriggersCount = args[15] as Int,
             note = args[16] as String,
             bockAdjustLevel = args[17] as Int,
-            bockAdjustRemaining = args[18] as Int
+            bockAdjustRemaining = args[18] as Int,
+            gameType = args[19] as GameType,
+            soloPlayerId = args[20] as Long?
         )
     }.stateIn(
         scope = viewModelScope,
@@ -158,6 +170,8 @@ class GameViewModel(
         }
 
         _editingRoundId.value = null
+        _gameType.value = GameType.NORMAL
+        _soloPlayerId.value = null
         _entryMode.value = EntryMode.TEAM
         _winningParty.value = WinningParty.RE
         _basePoints.value = 1
@@ -176,6 +190,14 @@ class GameViewModel(
     fun openEditRound(roundWithScores: com.example.data.model.RoundWithScores) {
         val round = roundWithScores.round
         val current = uiState.value.gameData ?: return
+
+        val parsedType = try {
+            GameType.valueOf(round.gameType)
+        } catch (e: Exception) {
+            GameType.NORMAL
+        }
+        _gameType.value = parsedType
+        _soloPlayerId.value = round.soloPlayerId
 
         _editingRoundId.value = round.id
         _entryMode.value = EntryMode.MANUAL // Bei Bearbeitung genaue Werte laden
@@ -202,6 +224,28 @@ class GameViewModel(
         _isSummaryDialogOpen.value = false
     }
 
+    fun setGameType(type: GameType) {
+        _gameType.value = type
+        if (type == GameType.SOLO) {
+            _hochzeitPlayerId.value = null // keine Hochzeit im Solo
+            val current = uiState.value.gameData ?: return
+            val sitting = _sittingOutPlayerId.value
+            val active = current.players.filter { it.id != sitting }
+            if (_soloPlayerId.value == null || !active.any { it.id == _soloPlayerId.value }) {
+                _soloPlayerId.value = active.firstOrNull()?.id
+            }
+            syncManualPointsFromTeam()
+        } else {
+            _soloPlayerId.value = null
+            syncManualPointsFromTeam()
+        }
+    }
+
+    fun setSoloPlayer(playerId: Long) {
+        _soloPlayerId.value = playerId
+        syncManualPointsFromTeam()
+    }
+
     fun setEntryMode(mode: EntryMode) {
         _entryMode.value = mode
     }
@@ -219,6 +263,8 @@ class GameViewModel(
     fun openQuickWeddingEntry(playerId: Long) {
         val current = uiState.value.gameData ?: return
         _editingRoundId.value = null
+        _gameType.value = GameType.NORMAL
+        _soloPlayerId.value = null
         _entryMode.value = EntryMode.TEAM
         _winningParty.value = WinningParty.RE
         _basePoints.value = 0 // 0 Spielpunkte, reine Hochzeitswertung
@@ -257,6 +303,12 @@ class GameViewModel(
         // Wenn dieser Spieler im Re-Team war, entfernen
         if (playerId != null && _rePlayerIds.value.contains(playerId)) {
             _rePlayerIds.value = _rePlayerIds.value - playerId
+        }
+        // Wenn dieser Spieler als Solospieler ausgewählt war, einen anderen aktiven Spieler wählen
+        if (playerId != null && _soloPlayerId.value == playerId) {
+            val current = uiState.value.gameData
+            val otherActive = current?.players?.filter { it.id != playerId }?.firstOrNull()
+            _soloPlayerId.value = otherActive?.id
         }
         syncManualPointsFromTeam()
     }
@@ -310,18 +362,33 @@ class GameViewModel(
     private fun syncManualPointsFromTeam() {
         val current = uiState.value.gameData ?: return
         val sitting = _sittingOutPlayerId.value
-        val re = _rePlayerIds.value
         val pts = _basePoints.value
         val party = _winningParty.value
 
         val map = mutableMapOf<Long, Int>()
-        current.players.forEach { p ->
-            if (p.id == sitting) {
-                map[p.id] = 0
-            } else if (re.contains(p.id)) {
-                map[p.id] = if (party == WinningParty.RE) pts else -pts
-            } else {
-                map[p.id] = if (party == WinningParty.RE) -pts else pts
+        if (_gameType.value == GameType.SOLO) {
+            val soloId = _soloPlayerId.value
+            val activeOpponents = current.players.filter { it.id != sitting && it.id != soloId }
+            val opponentsCount = activeOpponents.size
+            val soloWon = party == WinningParty.RE
+
+            current.players.forEach { p ->
+                when (p.id) {
+                    sitting -> map[p.id] = 0
+                    soloId -> map[p.id] = if (soloWon) pts * opponentsCount else -pts * opponentsCount
+                    else -> map[p.id] = if (soloWon) -pts else pts
+                }
+            }
+        } else {
+            val re = _rePlayerIds.value
+            current.players.forEach { p ->
+                if (p.id == sitting) {
+                    map[p.id] = 0
+                } else if (re.contains(p.id)) {
+                    map[p.id] = if (party == WinningParty.RE) pts else -pts
+                } else {
+                    map[p.id] = if (party == WinningParty.RE) -pts else pts
+                }
             }
         }
         _manualRawPoints.value = map
@@ -331,15 +398,30 @@ class GameViewModel(
         return if (_entryMode.value == EntryMode.TEAM) {
             val current = uiState.value.gameData ?: return emptyMap()
             val sitting = _sittingOutPlayerId.value
-            val re = _rePlayerIds.value
             val pts = _basePoints.value
             val party = _winningParty.value
 
-            current.players.associate { p ->
-                p.id to when {
-                    p.id == sitting -> 0
-                    re.contains(p.id) -> if (party == WinningParty.RE) pts else -pts
-                    else -> if (party == WinningParty.RE) -pts else pts
+            if (_gameType.value == GameType.SOLO) {
+                val soloId = _soloPlayerId.value
+                val activeOpponents = current.players.filter { it.id != sitting && it.id != soloId }
+                val opponentsCount = activeOpponents.size
+                val soloWon = party == WinningParty.RE
+
+                current.players.associate { p ->
+                    p.id to when (p.id) {
+                        sitting -> 0
+                        soloId -> if (soloWon) pts * opponentsCount else -pts * opponentsCount
+                        else -> if (soloWon) -pts else pts
+                    }
+                }
+            } else {
+                val re = _rePlayerIds.value
+                current.players.associate { p ->
+                    p.id to when {
+                        p.id == sitting -> 0
+                        re.contains(p.id) -> if (party == WinningParty.RE) pts else -pts
+                        else -> if (party == WinningParty.RE) -pts else pts
+                    }
                 }
             }
         } else {
@@ -394,9 +476,15 @@ class GameViewModel(
             return
         }
 
-        // Bei reinem Kartenspiel mit 4 Spielern prüfen, ob 2 Re-Spieler gewählt wurden
-        if (_entryMode.value == EntryMode.TEAM && _basePoints.value > 0 && _rePlayerIds.value.size != 2 && current.game.playerCount == 4) {
+        // Bei normalem Spiel mit 4 Spielern im Team-Modus prüfen, ob 2 Re-Spieler gewählt wurden
+        if (_gameType.value == GameType.NORMAL && _entryMode.value == EntryMode.TEAM && _basePoints.value > 0 && _rePlayerIds.value.size != 2 && current.game.playerCount == 4) {
             _errorMessage.value = "Bitte 2 Spieler für das Re-Team auswählen."
+            return
+        }
+
+        // Bei Solospiel prüfen, ob ein Solospieler ausgewählt wurde
+        if (_gameType.value == GameType.SOLO && _soloPlayerId.value == null) {
+            _errorMessage.value = "Bitte genau einen Solospieler auswählen."
             return
         }
 
@@ -429,6 +517,9 @@ class GameViewModel(
 
         val rawPoints = calculateCurrentRawPoints()
         val editingId = _editingRoundId.value
+        val effectiveType = _gameType.value
+        val effectiveSoloPlayerId = if (effectiveType == GameType.SOLO) _soloPlayerId.value else null
+        val effectiveHochzeitPlayerId = if (effectiveType == GameType.SOLO) null else _hochzeitPlayerId.value
 
         viewModelScope.launch {
             _isSubmitting.value = true
@@ -439,11 +530,13 @@ class GameViewModel(
                         gameId = gameId,
                         basePoints = _basePoints.value,
                         rawPlayerPoints = rawPoints,
-                        hochzeitPlayerId = _hochzeitPlayerId.value,
+                        hochzeitPlayerId = effectiveHochzeitPlayerId,
                         sittingOutPlayerId = _sittingOutPlayerId.value,
                         note = _note.value,
                         triggerNewBock = _bockTriggersCount.value > 0,
-                        bockTriggersCount = _bockTriggersCount.value
+                        bockTriggersCount = _bockTriggersCount.value,
+                        gameType = effectiveType.name,
+                        soloPlayerId = effectiveSoloPlayerId
                     )
                     if (result.isFailure) {
                         _errorMessage.value = result.exceptionOrNull()?.message ?: "Fehler beim Speichern der Runde"
@@ -460,10 +553,12 @@ class GameViewModel(
                         basePoints = _basePoints.value,
                         rawPlayerPoints = rawPoints,
                         bockLevel = bockLevel,
-                        hochzeitPlayerId = _hochzeitPlayerId.value,
+                        hochzeitPlayerId = effectiveHochzeitPlayerId,
                         sittingOutPlayerId = _sittingOutPlayerId.value,
                         note = _note.value,
-                        bockTriggersCount = _bockTriggersCount.value
+                        bockTriggersCount = _bockTriggersCount.value,
+                        gameType = effectiveType.name,
+                        soloPlayerId = effectiveSoloPlayerId
                     )
                     if (result.isFailure) {
                         _errorMessage.value = result.exceptionOrNull()?.message ?: "Fehler beim Aktualisieren der Runde"

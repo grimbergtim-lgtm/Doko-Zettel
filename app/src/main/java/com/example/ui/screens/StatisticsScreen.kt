@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,7 +53,7 @@ import com.example.ui.theme.WeddingPink
 import com.example.ui.viewmodel.StatsMetric
 import com.example.ui.viewmodel.StatsViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun StatisticsScreen(
     viewModel: StatsViewModel,
@@ -173,9 +175,9 @@ fun StatisticsScreen(
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         FilterChip(
                             selected = state.selectedMetric == StatsMetric.TOTAL_POINTS,
@@ -197,6 +199,16 @@ fun StatisticsScreen(
                             onClick = { viewModel.setMetric(StatsMetric.WEDDINGS) },
                             label = { Text("Hochzeiten") }
                         )
+                        FilterChip(
+                            selected = state.selectedMetric == StatsMetric.SOLO_AS_SOLOIST,
+                            onClick = { viewModel.setMetric(StatsMetric.SOLO_AS_SOLOIST) },
+                            label = { Text("⭐ Solospiele") }
+                        )
+                        FilterChip(
+                            selected = state.selectedMetric == StatsMetric.SOLO_POINTS,
+                            onClick = { viewModel.setMetric(StatsMetric.SOLO_POINTS) },
+                            label = { Text("⭐ Solo-Punkte") }
+                        )
                     }
                 }
             }
@@ -208,6 +220,8 @@ fun StatisticsScreen(
                     StatsMetric.AVG_PER_ROUND -> "Vergleich: Durchschnittliche Punkte pro Runde"
                     StatsMetric.WINS -> "Vergleich: Anzahl gewonnener Partien (Platz 1)"
                     StatsMetric.WEDDINGS -> "Vergleich: Häufigkeit von Hochzeiten"
+                    StatsMetric.SOLO_AS_SOLOIST -> "Vergleich: Anzahl gespielter Soli (als Solospieler)"
+                    StatsMetric.SOLO_POINTS -> "Vergleich: Punkteentwicklung in Solopartien"
                 }
                 ScoreBarChart(
                     items = state.barItems,

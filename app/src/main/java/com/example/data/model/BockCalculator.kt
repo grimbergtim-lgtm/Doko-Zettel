@@ -102,4 +102,77 @@ object BockCalculator {
     fun calculateFinalPoints(rawPoints: Int, level: Int): Int {
         return rawPoints * getMultiplier(level)
     }
+
+    /**
+     * Ermittelt die Bockstufe (1 bis 8) basierend auf der Anzahl gleichzeitig aktiver Bockfolgen.
+     * 0 aktive Folgen -> Stufe 1 (1x)
+     * 1 aktive Folge  -> Stufe 2 (2x)
+     * 2 aktive Folgen -> Stufe 3 (4x)
+     * 3 aktive Folgen -> Stufe 4 (8x)
+     * ...
+     * 7+ aktive Folgen -> Stufe 8 (128x, Maximum)
+     */
+    fun calculateLevelFromActiveSeriesCount(activeCount: Int): Int {
+        return (1 + activeCount.coerceAtLeast(0)).coerceIn(MIN_LEVEL, MAX_LEVEL)
+    }
+
+    /**
+     * Ermittelt den Multiplikator direkt aus der Anzahl aktiver Bockfolgen.
+     */
+    fun getMultiplierForActiveSeriesCount(activeCount: Int): Int {
+        return getMultiplier(calculateLevelFromActiveSeriesCount(activeCount))
+    }
+
+    /**
+     * Parst einen CSV-String aktiver Restlaufzeiten in eine Liste von Ganzzahlen.
+     * Z. B. "3,1" -> listOf(3, 1)
+     */
+    fun parseActiveSeries(seriesString: String): List<Int> {
+        if (seriesString.isBlank()) return emptyList()
+        return seriesString.split(",")
+            .mapNotNull { it.trim().toIntOrNull() }
+            .filter { it > 0 }
+    }
+
+    /**
+     * Serialisiert eine Liste aktiver Restlaufzeiten in einen CSV-String.
+     * Z. B. listOf(3, 1) -> "3,1"
+     */
+    fun serializeActiveSeries(series: List<Int>): String {
+        return series.filter { it > 0 }.joinToString(",")
+    }
+
+    /**
+     * Simuliert den Übergang einer Spielrunde:
+     * 1. Jede bisher aktive Bockfolge wird genau einmal um 1 dekrementiert.
+     *    Abgelaufene Folgen (Restlaufzeit <= 0) werden entfernt.
+     * 2. Für jeden neuen Auslöser wird eine eigene neue Folge mit der vollen
+     *    Laufzeit (4 Runden bei 4 Spielern, 5 Runden bei 5 Spielern) hinzugefügt.
+     *    Bestehende Restlaufzeiten werden dabei nicht zurückgesetzt.
+     */
+    fun advanceActiveSeries(
+        currentSeries: List<Int>,
+        newTriggers: Int,
+        durationPerSeries: Int
+    ): List<Int> {
+        val decremented = currentSeries.map { it - 1 }.filter { it > 0 }
+        val newSeries = if (newTriggers > 0 && durationPerSeries > 0) {
+            List(newTriggers.coerceIn(0, MAX_LEVEL)) { durationPerSeries }
+        } else {
+            emptyList()
+        }
+        return decremented + newSeries
+    }
+
+    /**
+     * Liefert die Dauer einer Bockfolge basierend auf der Spieleranzahl:
+     * Bei 4 Spielern 4 Spielrunden, bei 5 Spielern 5 Spielrunden.
+     */
+    fun getDurationForPlayerCount(playerCount: Int, fallback: Int = 4): Int {
+        return when (playerCount) {
+            4 -> 4
+            5 -> 5
+            else -> fallback.coerceAtLeast(1)
+        }
+    }
 }
