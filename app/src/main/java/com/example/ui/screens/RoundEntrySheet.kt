@@ -835,8 +835,6 @@ fun RoundEntrySheet(
                         fontSize = 13.sp,
                         color = if (wouldExceed) NegativeRed else if (state.bockTriggersCount > 0) BockOrange else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    }
-
                     // Vorschau der Auswirkungen oder Fehlermeldung bei Überschreitung
                     if (wouldExceed) {
                         Text(
