@@ -835,29 +835,6 @@ fun RoundEntrySheet(
                         fontSize = 13.sp,
                         color = if (wouldExceed) NegativeRed else if (state.bockTriggersCount > 0) BockOrange else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-
-                    // Schnellwahl-Chips für 0..8
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf(
-                            0 to "0 (Kein)",
-                            1 to "1 (Einfach)",
-                            2 to "2 (Doppel)",
-                            3 to "3 (Dreifach)",
-                            4 to "4 (Vierfach)",
-                            5 to "5",
-                            6 to "6",
-                            7 to "7",
-                            8 to "8"
-                        ).forEach { (cnt, label) ->
-                            FilterChip(
-                                selected = state.bockTriggersCount == cnt,
-                                onClick = { viewModel.setBockTriggersCount(cnt) },
-                                label = { Text(label, fontSize = 12.sp) }
-                            )
-                        }
                     }
 
                     // Vorschau der Auswirkungen oder Fehlermeldung bei Überschreitung
