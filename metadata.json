@@ -1,0 +1,6 @@
+{
+  "name": "Doppelkopf",
+  "description": "Digitaler Spielstandszähler und Auswertung für Doppelkopf mit Bockrunden, Hochzeit, Statistiken und Historie.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
