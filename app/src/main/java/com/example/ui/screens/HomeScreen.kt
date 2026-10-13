@@ -88,7 +88,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Doppelkopf Zähler",
+                            text = "Aida Doko Zettel by Tim",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -164,7 +164,7 @@ fun HomeScreen(
                         )
 
                         Text(
-                            text = "Präzise Punkterfassung, Bockrunden Stufe 1–8, Hochzeiten und umfassende Statistiken.",
+                            text = "Wähle `Neues Spiel starten` für die nächste Partie aus",
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
                             fontSize = 13.sp
                         )
@@ -187,9 +187,9 @@ fun HomeScreen(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null)
                                 Text(
-                                    text = "Neues Spiel starten (4 oder 5 Spieler)",
+                                    text = "Neues Spiel starten",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
+                                    fontSize = 16.sp
                                 )
                             }
                         }
