@@ -631,16 +631,6 @@ fun RoundEntrySheet(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = "+1")
                             }
-
-                            // Schnellwahl-Chips
-                            listOf(0, 1, 2, 3, 4, 5, 6).forEach { pts ->
-                                FilterChip(
-                                    selected = state.basePoints == pts,
-                                    onClick = { viewModel.setBasePoints(pts) },
-                                    label = { Text(if (pts == 0) "0 (Nur Hz)" else "$pts") },
-                                    modifier = Modifier.padding(horizontal = 2.dp)
-                                )
-                            }
                         }
                     }
                 } else {
