@@ -230,7 +230,7 @@ fun ActiveGameScreen(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Punkteverlauf (Grafik)") }
+                    text = { Text("Graph") }
                 )
             }
 
