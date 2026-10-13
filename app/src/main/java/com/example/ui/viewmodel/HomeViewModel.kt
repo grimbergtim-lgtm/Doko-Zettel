@@ -49,11 +49,11 @@ class HomeViewModel(
         viewModelScope.launch {
             val players = repository.getAllPlayersSync()
             if (players.isEmpty()) {
-                repository.insertPlayer("Anna", 0xFF2563EBL, "♠")
-                repository.insertPlayer("Ben", 0xFFDC2626L, "♥")
-                repository.insertPlayer("Clara", 0xFF16A34AL, "♦")
-                repository.insertPlayer("David", 0xFFD97706L, "♣")
-                repository.insertPlayer("Eva", 0xFF7C3AEDL, "👑")
+                repository.insertPlayer("Tim", 0xFF2563EBL, "♠")
+                repository.insertPlayer("Sebi", 0xFFDC2626L, "♥")
+                repository.insertPlayer("Pitti", 0xFF16A34AL, "♦")
+                repository.insertPlayer("Julius", 0xFFD97706L, "♣")
+                repository.insertPlayer("Timo", 0xFF7C3AEDL, "👑")
             }
         }
     }
