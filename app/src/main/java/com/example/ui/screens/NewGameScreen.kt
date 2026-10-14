@@ -172,7 +172,7 @@ fun NewGameScreen(
                             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                             modifier = Modifier.testTag("select_5_players_button")
                         ) {
-                            Text("5 Spieler (Geber sitzt)", fontWeight = FontWeight.Bold)
+                            Text("5 Spieler", fontWeight = FontWeight.Bold)
                         }
                     }
 
