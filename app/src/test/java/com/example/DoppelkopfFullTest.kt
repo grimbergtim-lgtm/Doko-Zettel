@@ -294,7 +294,7 @@ class DoppelkopfFullTest {
 
         // Text-Formatierung prüfen
         val historyText = BockCalculator.formatTriggerHistoryText(3, 2, 5)
-        assertEquals("Dreifachbock ausgelöst – Bockstufe von 2 auf 5", historyText)
+        assertEquals("Dreifachbock ausgelöst – von Einfacher Bock (×2) auf Vierfacher Bock (×16)", historyText)
 
         // Runde 2: Wird mit Stufe 3 (Multiplikator 4x) gespielt. Dreifachbock (3 Auslöser) kommt hinzu!
         val r2Id = repository.addRound(
@@ -1087,6 +1087,95 @@ class DoppelkopfFullTest {
         val round8 = data?.roundsWithScores?.last()?.round
         assertEquals(1, round8?.bockLevel)
         assertEquals(1, round8?.bockMultiplier)
+    }
+
+    @Test
+    fun testBockTerminologyAndNaming() {
+        // 0 Bockstufen = Normales Spiel, Multiplikator ×1
+        // 1 Bockstufe = Einfacher Bock, Multiplikator ×2
+        // 2 Bockstufen = Doppelter Bock, Multiplikator ×4
+        // 3 Bockstufen = Dreifacher Bock, Multiplikator ×8
+        // 4 Bockstufen = Vierfacher Bock, Multiplikator ×16
+        // 5 Bockstufen = Fünffacher Bock, Multiplikator ×32
+        // 6 Bockstufen = Sechsfacher Bock, Multiplikator ×64
+        // 7 Bockstufen = Siebenfacher Bock, Multiplikator ×128
+        // 8 Bockstufen = Achtfacher Bock, Multiplikator ×256
+
+        assertEquals("Normales Spiel", BockCalculator.getBockName(1))
+        assertEquals("Einfacher Bock", BockCalculator.getBockName(2))
+        assertEquals("Doppelter Bock", BockCalculator.getBockName(4))
+        assertEquals("Dreifacher Bock", BockCalculator.getBockName(8))
+        assertEquals("Vierfacher Bock", BockCalculator.getBockName(16))
+        assertEquals("Fünffacher Bock", BockCalculator.getBockName(32))
+        assertEquals("Sechsfacher Bock", BockCalculator.getBockName(64))
+        assertEquals("Siebenfacher Bock", BockCalculator.getBockName(128))
+        assertEquals("Achtfacher Bock", BockCalculator.getBockName(256))
+
+        assertEquals("Normales Spiel (×1)", BockCalculator.formatBockWithMultiplier(1))
+        assertEquals("Einfacher Bock (×2)", BockCalculator.formatBockWithMultiplier(2))
+        assertEquals("Doppelter Bock (×4)", BockCalculator.formatBockWithMultiplier(4))
+        assertEquals("Dreifacher Bock (×8)", BockCalculator.formatBockWithMultiplier(8))
+        assertEquals("Vierfacher Bock (×16)", BockCalculator.formatBockWithMultiplier(16))
+        assertEquals("Fünffacher Bock (×32)", BockCalculator.formatBockWithMultiplier(32))
+        assertEquals("Sechsfacher Bock (×64)", BockCalculator.formatBockWithMultiplier(64))
+        assertEquals("Siebenfacher Bock (×128)", BockCalculator.formatBockWithMultiplier(128))
+        assertEquals("Achtfacher Bock (×256)", BockCalculator.formatBockWithMultiplier(256))
+
+        // Stufen direkt prüfen
+        assertEquals("Normales Spiel", BockCalculator.getBockNameForStufen(0))
+        assertEquals("Einfacher Bock", BockCalculator.getBockNameForStufen(1))
+        assertEquals("Doppelter Bock", BockCalculator.getBockNameForStufen(2))
+        assertEquals("Dreifacher Bock", BockCalculator.getBockNameForStufen(3))
+        assertEquals("Vierfacher Bock", BockCalculator.getBockNameForStufen(4))
+        assertEquals("Fünffacher Bock", BockCalculator.getBockNameForStufen(5))
+        assertEquals("Sechsfacher Bock", BockCalculator.getBockNameForStufen(6))
+        assertEquals("Siebenfacher Bock", BockCalculator.getBockNameForStufen(7))
+        assertEquals("Achtfacher Bock", BockCalculator.getBockNameForStufen(8))
+    }
+
+    @Test
+    fun testCalculateOutstandingBockRounds() {
+        // Fall 1: 3 Runden Doppelbock (×4) und 1 Runde einfacher Bock (×2)
+        // Entsteht z.B. bei zwei aktiven Folgen mit Restlaufzeiten 4 und 3
+        val res1 = BockCalculator.calculateOutstandingBockRounds(listOf(4, 3))
+        assertEquals(2, res1.size)
+        assertEquals(3, res1[0].roundCount)
+        assertEquals(4, res1[0].multiplier)
+        assertEquals("3 Runden – Doppelter Bock (×4)", res1[0].displayName)
+
+        assertEquals(1, res1[1].roundCount)
+        assertEquals(2, res1[1].multiplier)
+        assertEquals("1 Runde – Einfacher Bock (×2)", res1[1].displayName)
+
+        // Auch mit umgekehrter Reihenfolge listOf(3, 4)
+        val res1b = BockCalculator.calculateOutstandingBockRounds(listOf(3, 4))
+        assertEquals(2, res1b.size)
+        assertEquals("3 Runden – Doppelter Bock (×4)", res1b[0].displayName)
+        assertEquals("1 Runde – Einfacher Bock (×2)", res1b[1].displayName)
+
+        // Fall 2: Keine ausstehenden Bockrunden
+        val resEmpty = BockCalculator.calculateOutstandingBockRounds(emptyList())
+        assertTrue(resEmpty.isEmpty())
+
+        val resEmptyString = BockCalculator.calculateOutstandingBockRounds("", currentBockLevel = 1, remainingBockRounds = 0)
+        assertTrue(resEmptyString.isEmpty())
+
+        // Fall 3: Nur eine aktive Folge mit 4 Runden (Einfacher Bock x2)
+        val resSingle = BockCalculator.calculateOutstandingBockRounds(listOf(4))
+        assertEquals(1, resSingle.size)
+        assertEquals(4, resSingle[0].roundCount)
+        assertEquals(2, resSingle[0].multiplier)
+        assertEquals("4 Runden – Einfacher Bock (×2)", resSingle[0].displayName)
+
+        // Fall 4: Drei überlappende Folgen z.B. listOf(5, 4, 2)
+        // Runde 1 & 2: 3 Folgen aktiv -> Multiplikator 8 (2 Runden Dreifacher Bock)
+        // Runde 3 & 4: 2 Folgen aktiv -> Multiplikator 4 (2 Runden Doppelter Bock)
+        // Runde 5: 1 Folge aktiv -> Multiplikator 2 (1 Runde Einfacher Bock)
+        val resTriple = BockCalculator.calculateOutstandingBockRounds(listOf(5, 4, 2))
+        assertEquals(3, resTriple.size)
+        assertEquals("2 Runden – Dreifacher Bock (×8)", resTriple[0].displayName)
+        assertEquals("2 Runden – Doppelter Bock (×4)", resTriple[1].displayName)
+        assertEquals("1 Runde – Einfacher Bock (×2)", resTriple[2].displayName)
     }
 }
 

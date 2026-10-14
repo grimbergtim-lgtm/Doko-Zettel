@@ -341,9 +341,9 @@ class GameViewModel(
         }
 
         if (currentBock + safeCount > BockCalculator.MAX_LEVEL) {
-            _errorMessage.value = "Maximale Bockstufe 8 (128x) würde überschritten werden: Stufe $currentBock + $safeCount = Stufe ${currentBock + safeCount}. Maximal ${BockCalculator.maxAllowedTriggers(currentBock)} zusätzliche(r) Auslöser erlaubt."
+            _errorMessage.value = "Maximaler Bock (128x) würde überschritten werden. Maximal ${BockCalculator.maxAllowedTriggers(currentBock)} zusätzliche(r) Auslöser erlaubt."
         } else {
-            if (_errorMessage.value?.contains("Maximale Bockstufe") == true) {
+            if (_errorMessage.value?.contains("Maximaler Bock") == true) {
                 _errorMessage.value = null
             }
         }
@@ -496,7 +496,7 @@ class GameViewModel(
         }
         val triggers = _bockTriggersCount.value
         if (currentBock + triggers > BockCalculator.MAX_LEVEL) {
-            _errorMessage.value = "Maximale Bockstufe 8 (128x) würde überschritten werden: Stufe $currentBock + $triggers = Stufe ${currentBock + triggers}. Maximal ${BockCalculator.maxAllowedTriggers(currentBock)} zusätzliche(r) Auslöser erlaubt."
+            _errorMessage.value = "Maximaler Bock (128x) würde überschritten werden. Maximal ${BockCalculator.maxAllowedTriggers(currentBock)} zusätzliche(r) Auslöser erlaubt."
             return
         }
 

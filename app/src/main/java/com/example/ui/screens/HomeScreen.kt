@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.example.data.model.BockCalculator
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -256,6 +257,7 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                                 )
                                 if (latestActive.currentBockLevel > 1) {
+                                    val mult = BockCalculator.getMultiplier(latestActive.currentBockLevel)
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -267,7 +269,7 @@ fun HomeScreen(
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Text(
-                                            text = "Bock Stufe ${latestActive.currentBockLevel}",
+                                            text = BockCalculator.formatBockWithMultiplier(mult),
                                             fontSize = 12.sp,
                                             color = BockOrange,
                                             fontWeight = FontWeight.Bold

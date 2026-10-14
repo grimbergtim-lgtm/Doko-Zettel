@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -118,7 +120,7 @@ fun RoundSummaryDialog(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Gespielt mit Stufe $bockLevel (${multiplier}x)",
+                            text = "Gespielt mit ${BockCalculator.formatBockWithMultiplier(multiplier)}",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                             color = BockOrange
@@ -149,6 +151,7 @@ fun RoundSummaryDialog(
 
                 // Vorschau auf neue Bockauslöser
                 if (bockTriggersCount > 0) {
+                    val currentMult = BockCalculator.getMultiplier(bockLevel)
                     val resLevel = BockCalculator.calculateResultingLevel(bockLevel, bockTriggersCount)
                     val resMult = BockCalculator.getMultiplier(resLevel)
                     val roundsToAdd = bockTriggersCount * gameData.game.bockRoundsPerTrigger
@@ -167,7 +170,7 @@ fun RoundSummaryDialog(
                                 color = BockOrange
                             )
                             Text(
-                                text = "Bockstufe steigt von $bockLevel auf $resLevel (${resMult}x Multiplikator ab nächster Runde, +$roundsToAdd Bockrunden)",
+                                text = "Bock steigt von ${BockCalculator.formatBockWithMultiplier(currentMult)} auf ${BockCalculator.formatBockWithMultiplier(resMult)} (+$roundsToAdd Bockrunden ab nächster Runde)",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -341,6 +344,7 @@ fun RoundSummaryDialog(
 fun BockAdjustDialog(
     currentLevel: Int,
     currentRemaining: Int,
+    outstandingRounds: List<BockCalculator.OutstandingBockRounds> = emptyList(),
     onLevelChange: (Int) -> Unit,
     onRemainingChange: (Int) -> Unit,
     onApply: () -> Unit,
@@ -361,7 +365,7 @@ fun BockAdjustDialog(
                     tint = BockOrange
                 )
                 Text(
-                    text = "Bockstufen anpassen",
+                    text = "Bock anpassen",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -370,27 +374,68 @@ fun BockAdjustDialog(
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Übersicht ausstehender Bockrunden
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (outstandingRounds.isNotEmpty()) BockOrange.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "AUSSTEHENDE BOCKRUNDEN",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (outstandingRounds.isNotEmpty()) BockOrange else MaterialTheme.colorScheme.onSurfaceVariant,
+                            letterSpacing = 0.5.sp
+                        )
+                        if (outstandingRounds.isEmpty()) {
+                            Text(
+                                text = "Keine ausstehenden Bockrunden",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            outstandingRounds.forEach { item ->
+                                Text(
+                                    text = "• ${item.displayName}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+
                 Text(
                     text = "Hier kannst du die aktuelle Bockphase manuell korrigieren oder aktivieren.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Stufe Wähler (1..8)
+                // Bock Wähler (1..8)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Bockstufe:",
+                            text = "Bock:",
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
                         )
                         Text(
-                            text = "Stufe $currentLevel -> ${multiplier}x Multiplikator",
+                            text = BockCalculator.formatBockWithMultiplier(multiplier),
                             fontWeight = FontWeight.Bold,
                             color = BockOrange,
                             fontSize = 14.sp
@@ -407,8 +452,8 @@ fun BockAdjustDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Stufe 1 (1x)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Stufe 8 (128x)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BockCalculator.formatBockWithMultiplier(BockCalculator.getMultiplier(1)), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BockCalculator.formatBockWithMultiplier(BockCalculator.getMultiplier(8)), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 

@@ -87,13 +87,94 @@ object BockCalculator {
     }
 
     /**
-     * Formatiert den Text für die Historie gemäß Anforderung:
-     * z.B. „Dreifachbock ausgelöst – Bockstufe von 2 auf 5“
+     * Ermittelt die Anzahl der wirksamen Bockstufen für einen gegebenen Multiplikator.
+     * Formel: Multiplikator = 2^AnzahlDerBockstufen
+     *
+     * 0 Bockstufen = Multiplikator ×1
+     * 1 Bockstufe  = Multiplikator ×2
+     * 2 Bockstufen = Multiplikator ×4
+     * 3 Bockstufen = Multiplikator ×8
+     * 4 Bockstufen = Multiplikator ×16
+     * 5 Bockstufen = Multiplikator ×32
+     * 6 Bockstufen = Multiplikator ×64
+     * 7 Bockstufen = Multiplikator ×128
+     * 8 Bockstufen = Multiplikator ×256
+     */
+    fun getBockStufenForMultiplier(multiplier: Int): Int {
+        if (multiplier <= 1) return 0
+        var m = multiplier
+        var stufen = 0
+        while (m > 1) {
+            m = m shr 1
+            stufen++
+        }
+        return stufen
+    }
+
+    /**
+     * Ermittelt die lesbare Bock-Bezeichnung für die Anzahl der wirksamen Bockstufen:
+     * 0 Bockstufen -> Normales Spiel (kein Bock)
+     * 1 Bockstufe  -> Einfacher Bock
+     * 2 Bockstufen -> Doppelter Bock
+     * 3 Bockstufen -> Dreifacher Bock
+     * 4 Bockstufen -> Vierfacher Bock
+     * 5 Bockstufen -> Fünffacher Bock
+     * 6 Bockstufen -> Sechsfacher Bock
+     * 7 Bockstufen -> Siebenfacher Bock
+     * 8 Bockstufen -> Achtfacher Bock
+     */
+    fun getBockNameForStufen(bockStufen: Int): String = when (bockStufen) {
+        0 -> "Normales Spiel"
+        1 -> "Einfacher Bock"
+        2 -> "Doppelter Bock"
+        3 -> "Dreifacher Bock"
+        4 -> "Vierfacher Bock"
+        5 -> "Fünffacher Bock"
+        6 -> "Sechsfacher Bock"
+        7 -> "Siebenfacher Bock"
+        8 -> "Achtfacher Bock"
+        else -> if (bockStufen < 0) "Normales Spiel" else "${bockStufen}-facher Bock"
+    }
+
+    /**
+     * Ermittelt die lesbare Bock-Bezeichnung für einen gegebenen Multiplikator.
+     * Die Bezeichnung richtet sich nach der Anzahl der wirksamen Bockstufen (Multiplikator = 2^AnzahlDerBockstufen).
+     *
+     * Multiplikator ×1   -> Normales Spiel (0 Bockstufen, kein Bock)
+     * Multiplikator ×2   -> Einfacher Bock (1 Bockstufe)
+     * Multiplikator ×4   -> Doppelter Bock (2 Bockstufen)
+     * Multiplikator ×8   -> Dreifacher Bock (3 Bockstufen)
+     * Multiplikator ×16  -> Vierfacher Bock (4 Bockstufen)
+     * Multiplikator ×32  -> Fünffacher Bock (5 Bockstufen)
+     * Multiplikator ×64  -> Sechsfacher Bock (6 Bockstufen)
+     * Multiplikator ×128 -> Siebenfacher Bock (7 Bockstufen)
+     * Multiplikator ×256 -> Achtfacher Bock (8 Bockstufen)
+     */
+    fun getBockName(multiplier: Int): String {
+        val stufen = getBockStufenForMultiplier(multiplier)
+        return getBockNameForStufen(stufen)
+    }
+
+    /**
+     * Formatiert die Bock-Bezeichnung zusammen mit dem Multiplikator-Faktor,
+     * z. B. „Normales Spiel (×1)“, „Einfacher Bock (×2)“, „Doppelter Bock (×4)“, „Dreifacher Bock (×8)“.
+     */
+    fun formatBockWithMultiplier(multiplier: Int): String {
+        val name = getBockName(multiplier)
+        val safeMultiplier = multiplier.coerceAtLeast(1)
+        return "$name (×$safeMultiplier)"
+    }
+
+    /**
+     * Formatiert den Text für die Historie:
+     * z.B. „Dreifachbock ausgelöst – von Einfacher Bock (×2) auf Vierfacher Bock (×16)“
      */
     fun formatTriggerHistoryText(triggers: Int, prevLevel: Int, resLevel: Int): String {
         if (triggers <= 0) return ""
         val name = getTriggerName(triggers)
-        return "$name ausgelöst – Bockstufe von $prevLevel auf $resLevel"
+        val prevMult = getMultiplier(prevLevel)
+        val resMult = getMultiplier(resLevel)
+        return "$name ausgelöst – von ${formatBockWithMultiplier(prevMult)} auf ${formatBockWithMultiplier(resMult)}"
     }
 
     /**
@@ -174,5 +255,75 @@ object BockCalculator {
             5 -> 5
             else -> fallback.coerceAtLeast(1)
         }
+    }
+
+    /**
+     * Repräsentiert eine zusammengefasste Gruppe ausstehender Bockrunden mit gleichem Multiplikator.
+     */
+    data class OutstandingBockRounds(
+        val roundCount: Int,
+        val multiplier: Int,
+        val displayName: String
+    )
+
+    /**
+     * Ermittelt die Liste aktiver Restlaufzeiten für ein Spiel.
+     * Nutzt primär [activeBockSeries]. Falls leer, aber [remainingBockRounds] > 0 und [currentBockLevel] > 1,
+     * wird ein Fallback anhand der Stufe und Restrunden gebildet.
+     */
+    fun getActiveSeriesForGame(
+        activeBockSeries: String,
+        currentBockLevel: Int,
+        remainingBockRounds: Int
+    ): List<Int> {
+        val parsed = parseActiveSeries(activeBockSeries)
+        if (parsed.isNotEmpty()) return parsed
+        if (remainingBockRounds > 0 && currentBockLevel > 1) {
+            val count = (currentBockLevel - 1).coerceIn(1, MAX_LEVEL - 1)
+            return List(count) { remainingBockRounds }
+        }
+        return emptyList()
+    }
+
+    /**
+     * Berechnet die noch ausstehenden Bockrunden gruppiert nach Multiplikator.
+     * Simuliert die zukünftigen Runden auf Basis der aktiven Restlaufzeiten:
+     * In jeder Runde wird der Multiplikator anhand der Anzahl aktiver Folgen ermittelt
+     * und jede Folge um 1 dekrementiert (abgelaufene Folgen fallen weg).
+     */
+    fun calculateOutstandingBockRounds(series: List<Int>): List<OutstandingBockRounds> {
+        var current = series.filter { it > 0 }
+        if (current.isEmpty()) return emptyList()
+
+        val multiplierCounts = mutableMapOf<Int, Int>()
+        while (current.isNotEmpty()) {
+            val mult = getMultiplierForActiveSeriesCount(current.size)
+            multiplierCounts[mult] = (multiplierCounts[mult] ?: 0) + 1
+            current = current.map { it - 1 }.filter { it > 0 }
+        }
+
+        return multiplierCounts.entries
+            .sortedByDescending { it.key }
+            .map { (mult, count) ->
+                val roundLabel = if (count == 1) "1 Runde" else "$count Runden"
+                val bockName = formatBockWithMultiplier(mult)
+                OutstandingBockRounds(
+                    roundCount = count,
+                    multiplier = mult,
+                    displayName = "$roundLabel – $bockName"
+                )
+            }
+    }
+
+    /**
+     * Überladung zur direkten Berechnung aus den Spieldaten.
+     */
+    fun calculateOutstandingBockRounds(
+        activeBockSeries: String,
+        currentBockLevel: Int,
+        remainingBockRounds: Int
+    ): List<OutstandingBockRounds> {
+        val series = getActiveSeriesForGame(activeBockSeries, currentBockLevel, remainingBockRounds)
+        return calculateOutstandingBockRounds(series)
     }
 }

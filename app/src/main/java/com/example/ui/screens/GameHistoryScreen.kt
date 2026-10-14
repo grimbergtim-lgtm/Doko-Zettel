@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.example.data.model.BockCalculator
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -330,6 +331,7 @@ private fun GameHistoryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (game.currentBockLevel > 1) {
+                    val mult = BockCalculator.getMultiplier(game.currentBockLevel)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -341,7 +343,7 @@ private fun GameHistoryCard(
                             modifier = Modifier.size(13.dp)
                         )
                         Text(
-                            text = "Bock Stufe ${game.currentBockLevel}",
+                            text = BockCalculator.formatBockWithMultiplier(mult),
                             fontSize = 12.sp,
                             color = BockOrange,
                             fontWeight = FontWeight.Bold

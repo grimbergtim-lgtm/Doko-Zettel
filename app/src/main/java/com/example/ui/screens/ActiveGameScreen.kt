@@ -135,7 +135,7 @@ fun ActiveGameScreen(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Bockstufen anpassen") },
+                            text = { Text("Bock anpassen") },
                             onClick = {
                                 showMenu = false
                                 viewModel.openBockAdjustDialog()
@@ -433,9 +433,24 @@ fun ActiveGameScreen(
 
     // Dialog zum manuellen Bock-Anpassen
     if (state.isBockAdjustDialogOpen) {
+        val outstandingRounds = remember(
+            gameData?.game?.activeBockSeries,
+            gameData?.game?.currentBockLevel,
+            gameData?.game?.remainingBockRounds
+        ) {
+            gameData?.let {
+                BockCalculator.calculateOutstandingBockRounds(
+                    it.game.activeBockSeries,
+                    it.game.currentBockLevel,
+                    it.game.remainingBockRounds
+                )
+            } ?: emptyList()
+        }
+
         BockAdjustDialog(
             currentLevel = state.bockAdjustLevel,
             currentRemaining = state.bockAdjustRemaining,
+            outstandingRounds = outstandingRounds,
             onLevelChange = { viewModel.setAdjustBockLevel(it) },
             onRemainingChange = { viewModel.setAdjustBockRemaining(it) },
             onApply = { viewModel.applyBockAdjustment() },
@@ -674,7 +689,7 @@ private fun RoundCard(
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "Stufe ${round.bockLevel} (${round.bockMultiplier}x)",
+                                text = BockCalculator.formatBockWithMultiplier(round.bockMultiplier),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = BockOrange

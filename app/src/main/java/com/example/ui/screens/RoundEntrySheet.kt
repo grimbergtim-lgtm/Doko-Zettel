@@ -124,7 +124,7 @@ fun RoundEntrySheet(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "Bock Stufe $currentBockLevel (${multiplier}x)",
+                            text = BockCalculator.formatBockWithMultiplier(multiplier),
                             color = BockOrange,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
@@ -838,7 +838,7 @@ fun RoundEntrySheet(
                     // Vorschau der Auswirkungen oder Fehlermeldung bei Überschreitung
                     if (wouldExceed) {
                         Text(
-                            text = "⚠️ Fehler: Maximale Bockstufe 8 (128x) würde überschritten werden! (Aktuell Stufe $currentBockLevel + ${state.bockTriggersCount} Auslöser = Stufe ${currentBockLevel + state.bockTriggersCount}). Bitte auf maximal $maxAllowed Auslöser reduzieren.",
+                            text = "⚠️ Fehler: Maximaler Bock (128x) würde überschritten werden! Bitte auf maximal $maxAllowed Auslöser reduzieren.",
                             color = NegativeRed,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
@@ -846,14 +846,14 @@ fun RoundEntrySheet(
                     } else if (state.bockTriggersCount > 0) {
                         val roundsToAdd = state.bockTriggersCount * gameData.game.bockRoundsPerTrigger
                         Text(
-                            text = "🔥 Auswirkung: Bockstufe steigt von $currentBockLevel auf $resultingLevel (${resultingMultiplier}x Multiplikator ab nächster Runde, +$roundsToAdd Bockrunden).",
+                            text = "🔥 Auswirkung: Bock steigt von ${BockCalculator.formatBockWithMultiplier(multiplier)} auf ${BockCalculator.formatBockWithMultiplier(resultingMultiplier)} (+${roundsToAdd} Bockrunden ab nächster Runde).",
                             color = BockOrange,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     } else {
                         Text(
-                            text = "Keine neuen Auslöser. Aktuelle Stufe bleibt Stufe $currentBockLevel (${multiplier}x).",
+                            text = "Keine neuen Auslöser. Aktueller Status: ${BockCalculator.formatBockWithMultiplier(multiplier)}.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp
                         )

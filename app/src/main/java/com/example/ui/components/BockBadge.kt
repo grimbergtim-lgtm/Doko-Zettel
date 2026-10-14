@@ -64,13 +64,13 @@ fun BockBadge(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "Stufe $safeLevel",
+                        text = BockCalculator.getBockName(multiplier),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = textColor
                     )
                     Text(
-                        text = "(${multiplier}x)",
+                        text = "(×${multiplier})",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = textColor
