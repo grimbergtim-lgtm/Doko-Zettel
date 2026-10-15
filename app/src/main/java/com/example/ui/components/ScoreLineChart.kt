@@ -123,7 +123,7 @@ fun ScoreLineChart(
                         modifier = Modifier
                             .size(10.dp)
                             .clip(CircleShape)
-                            .background(Color(player.colorHex))
+                            .background(player.color)
                     )
                     Text(
                         text = "${player.name}: ",
@@ -187,7 +187,7 @@ fun ScoreLineChart(
                 // Linien für jeden Spieler zeichnen
                 players.forEach { player ->
                     val series = progression[player.id] ?: return@forEach
-                    val playerColor = Color(player.colorHex)
+                    val playerColor = player.color
                     val path = Path()
 
                     series.forEachIndexed { index, score ->

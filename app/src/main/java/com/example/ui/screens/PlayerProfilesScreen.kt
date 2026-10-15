@@ -427,7 +427,7 @@ private fun EditPlayerDialog(
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(player.name) }
-    var selectedColor by remember { mutableLongStateOf(player.colorHex) }
+    var selectedColor by remember { mutableLongStateOf(Player.sanitizeColorHex(player.colorHex)) }
     var selectedSymbol by remember { mutableStateOf(player.avatarSymbol) }
     val symbols = listOf("♠", "♥", "♦", "♣", "👑", "⭐", "🎯", "🃏")
 
@@ -450,7 +450,7 @@ private fun EditPlayerDialog(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     PlayerColors.forEach { color ->
-                        val hex = color.value.toLong()
+                        val hex = Player.colorToHex(color)
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -459,7 +459,7 @@ private fun EditPlayerDialog(
                                 .clickable { selectedColor = hex },
                             contentAlignment = Alignment.Center
                         ) {
-                            if (selectedColor == hex) {
+                            if (Player.sanitizeColorHex(selectedColor) == hex) {
                                 Box(
                                     modifier = Modifier
                                         .size(10.dp)
@@ -498,7 +498,7 @@ private fun EditPlayerDialog(
             TextButton(
                 onClick = {
                     if (name.trim().isNotEmpty()) {
-                        onConfirm(player.copy(name = name.trim(), colorHex = selectedColor, avatarSymbol = selectedSymbol))
+                        onConfirm(player.copy(name = name.trim(), colorHex = Player.sanitizeColorHex(selectedColor), avatarSymbol = selectedSymbol))
                     }
                 },
                 enabled = name.trim().isNotEmpty()

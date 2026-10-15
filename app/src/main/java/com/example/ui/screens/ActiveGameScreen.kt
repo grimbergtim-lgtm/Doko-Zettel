@@ -67,6 +67,7 @@ import com.example.data.model.BockCalculator
 import com.example.data.model.FullGameData
 import com.example.data.model.RoundWithScores
 import com.example.ui.components.BockBadge
+import com.example.ui.components.GameLiveStatsSection
 import com.example.ui.components.PlayerAvatar
 import com.example.ui.components.ScoreLineChart
 import com.example.ui.theme.BockOrange
@@ -386,6 +387,12 @@ fun ActiveGameScreen(
                                 }
                             }
                         }
+                    }
+                    item {
+                        GameLiveStatsSection(gameData = gameData)
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(72.dp))
                     }
                 }
             }

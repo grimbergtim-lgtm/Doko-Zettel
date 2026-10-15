@@ -136,7 +136,7 @@ object BackupManager {
                     val player = Player(
                         id = obj.getLong("id"),
                         name = obj.getString("name"),
-                        colorHex = obj.optLong("colorHex", 0xFF2563EBL),
+                        colorHex = Player.sanitizeColorHex(obj.optLong("colorHex", Player.DEFAULT_COLOR_HEX)),
                         avatarSymbol = obj.optString("avatarSymbol", "♠"),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )

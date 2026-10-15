@@ -25,7 +25,7 @@ fun PlayerAvatar(
     size: Dp = 40.dp,
     showBorder: Boolean = true
 ) {
-    val bgColor = if (player != null) Color(player.colorHex) else MaterialTheme.colorScheme.surfaceVariant
+    val bgColor = player?.color ?: MaterialTheme.colorScheme.surfaceVariant
     val symbol = player?.avatarSymbol ?: "♠"
     val initial = player?.name?.take(1)?.uppercase() ?: "?"
 

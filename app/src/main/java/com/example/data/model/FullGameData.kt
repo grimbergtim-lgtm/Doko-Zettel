@@ -84,4 +84,7 @@ data class FullGameData(
                 .map { player -> player to (playerTotals[player.id] ?: 0) }
                 .sortedByDescending { it.second }
         }
+
+    val liveStats: GameLiveStats
+        get() = GameLiveStatsCalculator.calculate(this)
 }

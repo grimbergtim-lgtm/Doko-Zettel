@@ -77,7 +77,7 @@ fun ScoreBarChart(
         items.forEach { item ->
             val fraction = (abs(item.value) / maxAbsValue).toFloat().coerceIn(0.05f, 1f)
             val isPositive = item.value >= 0
-            val barColor = Color(item.player.colorHex)
+            val barColor = item.player.color
 
             Column(
                 modifier = Modifier.fillMaxWidth(),

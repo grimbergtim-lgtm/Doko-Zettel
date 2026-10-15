@@ -5,9 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.backup.BackupManager
 import com.example.data.local.AppDatabase
-import com.example.data.model.BockCalculator
-import com.example.data.model.Game
-import com.example.data.model.GameType
+import com.example.data.model.*
 import com.example.data.repository.DoppelkopfRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -1176,6 +1174,261 @@ class DoppelkopfFullTest {
         assertEquals("2 Runden – Dreifacher Bock (×8)", resTriple[0].displayName)
         assertEquals("2 Runden – Doppelter Bock (×4)", resTriple[1].displayName)
         assertEquals("1 Runde – Einfacher Bock (×2)", resTriple[2].displayName)
+    }
+
+    @Test
+    fun testPlayerColorFlowAndPersistence() = runBlocking {
+        // 1. Farbkonvertierung der Palette prüfen
+        com.example.ui.theme.PlayerColors.forEach { composeColor ->
+            val hex = com.example.data.model.Player.colorToHex(composeColor)
+            // Muss ein gültiger 32-Bit ARGB-Wert sein mit vollem Alpha (0xFF......)
+            assertEquals(0xFF000000L, hex and 0xFF000000L)
+            assertTrue(hex > 0L)
+            // Rückkonvertierung muss exakt die gleiche Farbe ergeben
+            val restoredColor = com.example.data.model.Player.parseColorHex(hex)
+            assertEquals(composeColor, restoredColor)
+        }
+
+        // 2. Erstellung eines neuen Spielers mit gewählter Farbe (z.B. Rot aus Palette)
+        val chosenColor = com.example.ui.theme.PlayerColors[1] // Rot (0xFFDC2626)
+        val chosenHex = com.example.data.model.Player.colorToHex(chosenColor)
+        val playerId = repository.insertPlayer("Max", chosenHex, "♥")
+
+        val loadedPlayer = repository.getPlayerByIdSync(playerId)
+        assertNotNull(loadedPlayer)
+        assertEquals(chosenHex, loadedPlayer!!.colorHex)
+        assertEquals(chosenColor, loadedPlayer.color)
+
+        // 3. Bearbeiten des Spielers mit anderer Farbe (z.B. Grün aus Palette)
+        val greenColor = com.example.ui.theme.PlayerColors[2] // Grün (0xFF16A34A)
+        val greenHex = com.example.data.model.Player.colorToHex(greenColor)
+        repository.updatePlayer(loadedPlayer.copy(colorHex = greenHex))
+
+        val updatedPlayer = repository.getPlayerByIdSync(playerId)
+        assertNotNull(updatedPlayer)
+        assertEquals(greenHex, updatedPlayer!!.colorHex)
+        assertEquals(greenColor, updatedPlayer.color)
+
+        // 4. Rückwärtskompatibilität: Legacy/korrupte 64-Bit Compose-Werte reparieren
+        // Simuliere einen alten Eintrag, bei dem color.value.toLong() in die DB gelangte
+        val corruptComposeValue = (0xFF7C3AEDUL shl 32).toLong() // Violett in oberen 32 Bits
+        val sanitized = com.example.data.model.Player.sanitizeColorHex(corruptComposeValue)
+        assertEquals(0xFF7C3AEDL, sanitized)
+        val recoveredColor = com.example.data.model.Player.parseColorHex(corruptComposeValue)
+        assertEquals(androidx.compose.ui.graphics.Color(0xFF7C3AED), recoveredColor)
+    }
+
+    @Test
+    fun testLiveGameFiveStatistics() = runBlocking {
+        // Spieler vorbereiten
+        val p1 = Player(id = 1L, name = "Anna", colorHex = 0xFF2563EBL)
+        val p2 = Player(id = 2L, name = "Ben", colorHex = 0xFFDC2626L)
+        val p3 = Player(id = 3L, name = "Chris", colorHex = 0xFF16A34AL)
+        val p4 = Player(id = 4L, name = "Dora", colorHex = 0xFFD97706L)
+        val p5 = Player(id = 5L, name = "Emil", colorHex = 0xFF7C3AEDL)
+        val players5 = listOf(p1, p2, p3, p4, p5)
+
+        val game = Game(id = 10L, title = "Testrunde", playerCount = 5)
+
+        // Runde 1: Normalspiel (Multiplikator 1x, kein Bock)
+        // Emil sitzt aus (p5). Re-Team: Anna (p1) & Ben (p2), Kontra: Chris (p3) & Dora (p4).
+        // Re gewinnt mit +2 Rohpunkten -> finalPoints = +2 (p1, p2), -2 (p3, p4), 0 (p5)
+        val r1 = GameRound(
+            id = 101L,
+            gameId = 10L,
+            roundNumber = 1,
+            bockLevel = 1,
+            bockMultiplier = 1,
+            sittingOutPlayerId = 5L
+        )
+        val s1 = listOf(
+            RoundScore(id = 1, roundId = 101L, gameId = 10L, playerId = 1L, rawPoints = 2, finalPoints = 2, isWinner = true),
+            RoundScore(id = 2, roundId = 101L, gameId = 10L, playerId = 2L, rawPoints = 2, finalPoints = 2, isWinner = true),
+            RoundScore(id = 3, roundId = 101L, gameId = 10L, playerId = 3L, rawPoints = -2, finalPoints = -2, isWinner = false),
+            RoundScore(id = 4, roundId = 101L, gameId = 10L, playerId = 4L, rawPoints = -2, finalPoints = -2, isWinner = false),
+            RoundScore(id = 5, roundId = 101L, gameId = 10L, playerId = 5L, rawPoints = 0, finalPoints = 0, isWinner = false, isSittingOut = true)
+        )
+
+        // Runde 2: Bockrunde (Multiplikator 2x, Einfacher Bock)
+        // Anna sitzt aus (p1). Re-Team: Chris (p3) & Emil (p5). Kontra: Ben (p2) & Dora (p4).
+        // Re gewinnt mit +3 Rohpunkten -> finalPoints = +6 (p3, p5), -6 (p2, p4), 0 (p1)
+        val r2 = GameRound(
+            id = 102L,
+            gameId = 10L,
+            roundNumber = 2,
+            bockLevel = 2,
+            bockMultiplier = 2,
+            sittingOutPlayerId = 1L
+        )
+        val s2 = listOf(
+            RoundScore(id = 6, roundId = 102L, gameId = 10L, playerId = 1L, rawPoints = 0, finalPoints = 0, isSittingOut = true),
+            RoundScore(id = 7, roundId = 102L, gameId = 10L, playerId = 2L, rawPoints = -3, finalPoints = -6, isWinner = false),
+            RoundScore(id = 8, roundId = 102L, gameId = 10L, playerId = 3L, rawPoints = 3, finalPoints = 6, isWinner = true),
+            RoundScore(id = 9, roundId = 102L, gameId = 10L, playerId = 4L, rawPoints = -3, finalPoints = -6, isWinner = false),
+            RoundScore(id = 10, roundId = 102L, gameId = 10L, playerId = 5L, rawPoints = 3, finalPoints = 6, isWinner = true)
+        )
+
+        // Runde 3: Solo (Multiplikator 4x, Doppelbock)
+        // Dora (p4) spielt Solo gegen Anna (p1), Chris (p3), Emil (p5). Ben (p2) sitzt aus.
+        // Gegenspieler gewinnen mit +1 Rohpunkt!
+        // Gegenspieler bekommen je +4 finalPoints (+1 * 4x).
+        // Solist Dora bekommt -12 (-1 * 3 Gegenspieler * 4x).
+        val r3 = GameRound(
+            id = 103L,
+            gameId = 10L,
+            roundNumber = 3,
+            bockLevel = 3,
+            bockMultiplier = 4,
+            gameType = GameType.SOLO.name,
+            soloPlayerId = 4L,
+            sittingOutPlayerId = 2L
+        )
+        val s3 = listOf(
+            RoundScore(id = 11, roundId = 103L, gameId = 10L, playerId = 1L, rawPoints = 1, finalPoints = 4, isWinner = true),
+            RoundScore(id = 12, roundId = 103L, gameId = 10L, playerId = 2L, rawPoints = 0, finalPoints = 0, isSittingOut = true),
+            RoundScore(id = 13, roundId = 103L, gameId = 10L, playerId = 3L, rawPoints = 1, finalPoints = 4, isWinner = true),
+            RoundScore(id = 14, roundId = 103L, gameId = 10L, playerId = 4L, rawPoints = -3, finalPoints = -12, isWinner = false),
+            RoundScore(id = 15, roundId = 103L, gameId = 10L, playerId = 5L, rawPoints = 1, finalPoints = 4, isWinner = true)
+        )
+
+        // Runde 4: Unentschiedene Runde (0 Rohpunkte)
+        // Niemand gewinnt, kein Sieger, setzt Serien zurück.
+        val r4 = GameRound(
+            id = 104L,
+            gameId = 10L,
+            roundNumber = 4,
+            bockLevel = 1,
+            bockMultiplier = 1,
+            sittingOutPlayerId = 3L
+        )
+        val s4 = listOf(
+            RoundScore(id = 16, roundId = 104L, gameId = 10L, playerId = 1L, rawPoints = 0, finalPoints = 0),
+            RoundScore(id = 17, roundId = 104L, gameId = 10L, playerId = 2L, rawPoints = 0, finalPoints = 0),
+            RoundScore(id = 18, roundId = 104L, gameId = 10L, playerId = 3L, rawPoints = 0, finalPoints = 0, isSittingOut = true),
+            RoundScore(id = 19, roundId = 104L, gameId = 10L, playerId = 4L, rawPoints = 0, finalPoints = 0),
+            RoundScore(id = 20, roundId = 104L, gameId = 10L, playerId = 5L, rawPoints = 0, finalPoints = 0)
+        )
+
+        val fullGameData = FullGameData(
+            game = game,
+            players = players5,
+            roundsWithScores = listOf(
+                RoundWithScores(round = r1, scores = s1),
+                RoundWithScores(round = r2, scores = s2),
+                RoundWithScores(round = r3, scores = s3),
+                RoundWithScores(round = r4, scores = s4)
+            )
+        )
+
+        val liveStats = fullGameData.liveStats
+
+        // === 1. Test Siege pro Spieler ===
+        // Anna: R1 gewinnt, R2 pausiert, R3 gewinnt, R4 unentschieden -> 2 Siege aus 3 aktiven Runden
+        val annaWins = liveStats.playerWins.find { it.player.id == 1L }!!
+        assertEquals(3, annaWins.roundsPlayed)
+        assertEquals(2, annaWins.winsCount)
+        assertEquals(0, annaWins.lossesCount)
+        assertEquals(1, annaWins.drawsCount)
+        assertEquals(200.0 / 3.0, annaWins.winRatePercent, 0.01)
+
+        // Dora: R1 verloren, R2 verloren, R3 verloren (Solo), R4 unentschieden -> 0 Siege, 3 Niederlagen, 1 Unentschieden
+        val doraWins = liveStats.playerWins.find { it.player.id == 4L }!!
+        assertEquals(4, doraWins.roundsPlayed)
+        assertEquals(0, doraWins.winsCount)
+        assertEquals(3, doraWins.lossesCount)
+        assertEquals(1, doraWins.drawsCount)
+        assertEquals(0.0, doraWins.winRatePercent, 0.01)
+
+        // Chris: R1 verloren, R2 gewonnen, R3 gewonnen, R4 pausiert -> 2 Siege aus 3 Runden
+        val chrisWins = liveStats.playerWins.find { it.player.id == 3L }!!
+        assertEquals(3, chrisWins.roundsPlayed)
+        assertEquals(2, chrisWins.winsCount)
+        assertEquals(1, chrisWins.lossesCount)
+
+        // === 2. Test Serien ===
+        // Anna: R1 Win (currWin=1), R2 Pausiert (currWin bleibt 1), R3 Win (currWin=2), R4 Unentschieden (reset auf 0)
+        val annaStreaks = liveStats.playerStreaks.find { it.player.id == 1L }!!
+        assertEquals(0, annaStreaks.currentWinStreak) // Wegen R4 Unentschieden
+        assertEquals(2, annaStreaks.maxWinStreak)
+        assertEquals(0, annaStreaks.currentLossStreak)
+        assertEquals(0, annaStreaks.maxLossStreak)
+
+        // Ben: R1 Win (currWin=1), R2 Loss (currLoss=1), R3 Pausiert (currLoss=1), R4 Unentschieden (reset auf 0)
+        val benStreaks = liveStats.playerStreaks.find { it.player.id == 2L }!!
+        assertEquals(0, benStreaks.currentWinStreak)
+        assertEquals(1, benStreaks.maxWinStreak)
+        assertEquals(0, benStreaks.currentLossStreak)
+        assertEquals(1, benStreaks.maxLossStreak)
+
+        // === 3. Test Bockrunden-Erfolge ===
+        // Bockrunden sind R2 (2x) und R3 (4x). R1 und R4 sind 1x (kein Bock).
+        // Chris hat an R2 und R3 teilgenommen und beide gewonnen (+6 Pkt. und +4 Pkt. = +10 Pkt.)
+        val chrisBock = liveStats.playerBockStats.find { it.player.id == 3L }!!
+        assertEquals(2, chrisBock.bockRoundsPlayed)
+        assertEquals(2, chrisBock.bockWins)
+        assertEquals(100.0, chrisBock.bockWinRatePercent, 0.01)
+        assertEquals(10, chrisBock.bockPoints)
+        assertEquals(2, chrisBock.breakdownByMultiplier.size)
+        val chrisMult2 = chrisBock.breakdownByMultiplier.find { it.multiplier == 2 }!!
+        assertEquals(1, chrisMult2.roundsPlayed)
+        assertEquals(1, chrisMult2.winsCount)
+        assertEquals(6, chrisMult2.points)
+        val chrisMult4 = chrisBock.breakdownByMultiplier.find { it.multiplier == 4 }!!
+        assertEquals(1, chrisMult4.roundsPlayed)
+        assertEquals(1, chrisMult4.winsCount)
+        assertEquals(4, chrisMult4.points)
+
+        // Ben hat nur an R2 teilgenommen (R3 pausiert) und verloren (-6 Pkt.)
+        val benBock = liveStats.playerBockStats.find { it.player.id == 2L }!!
+        assertEquals(1, benBock.bockRoundsPlayed)
+        assertEquals(0, benBock.bockWins)
+        assertEquals(0.0, benBock.bockWinRatePercent, 0.01)
+        assertEquals(-6, benBock.bockPoints)
+
+        // === 4 & 5. Test Häufigste Spielpartner & Erfolgsbilanz ===
+        // Wer hat zusammen gespielt?
+        // R1: (Anna, Ben) gewinnt (+2 + +2 = +4 Pkt.), (Chris, Dora) verliert (-2 + -2 = -4 Pkt.)
+        // R2: (Chris, Emil) gewinnt (+6 + +6 = +12 Pkt.), (Ben, Dora) verliert (-6 + -6 = -12 Pkt.)
+        // R3: Solo Dora -> Gegenspieler sind (Anna, Chris, Emil).
+        //     Paare unter Gegenspielern: (Anna, Chris), (Anna, Emil), (Chris, Emil)
+        //     Alle drei Gegenspieler gewinnen je +4 Pkt. -> jedes Paar hat +8 Pkt.
+        // R4: Unentschieden (rawPoints=0) -> keine Partnerbildung
+
+        // Prüfe Paar Chris & Emil:
+        // Gespielt in R2 (gewonnen, +12 Pkt.) und R3 (gewonnen, +8 Pkt.)
+        // Insgesamt: 2 Runden zusammen, 2 Siege (100%), Bilanz: +20 Pkt., Siege-Punkte: +20 Pkt.
+        val chrisEmil = liveStats.partnerStats.find {
+            (it.player1.id == 3L && it.player2.id == 5L) || (it.player1.id == 5L && it.player2.id == 3L)
+        }!!
+        assertEquals(2, chrisEmil.roundsTogether)
+        assertEquals(2, chrisEmil.winsTogether)
+        assertEquals(0, chrisEmil.lossesTogether)
+        assertEquals(100.0, chrisEmil.winRatePercent, 0.01)
+        assertEquals(20, chrisEmil.jointPointsBalance)
+        assertEquals(20, chrisEmil.wonRoundsPointsSum)
+        assertEquals(50.0, chrisEmil.frequencyPercent, 0.01) // 2 von 4 Runden = 50%
+
+        // Prüfe Paar Anna & Ben:
+        // Gespielt in R1 (gewonnen, +4 Pkt.)
+        val annaBen = liveStats.partnerStats.find {
+            (it.player1.id == 1L && it.player2.id == 2L) || (it.player1.id == 2L && it.player2.id == 1L)
+        }!!
+        assertEquals(1, annaBen.roundsTogether)
+        assertEquals(1, annaBen.winsTogether)
+        assertEquals(4, annaBen.jointPointsBalance)
+        assertEquals(4, annaBen.wonRoundsPointsSum)
+
+        // Prüfe Paar Ben & Dora:
+        // Gespielt in R2 (verloren, -12 Pkt.)
+        val benDora = liveStats.partnerStats.find {
+            (it.player1.id == 2L && it.player2.id == 4L) || (it.player1.id == 4L && it.player2.id == 2L)
+        }!!
+        assertEquals(1, benDora.roundsTogether)
+        assertEquals(0, benDora.winsTogether)
+        assertEquals(1, benDora.lossesTogether)
+        assertEquals(0.0, benDora.winRatePercent, 0.01)
+        assertEquals(-12, benDora.jointPointsBalance)
+        assertEquals(0, benDora.wonRoundsPointsSum)
     }
 }
 

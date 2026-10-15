@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.Player
 import com.example.ui.components.PlayerAvatar
 import com.example.ui.theme.NegativeRed
 import com.example.ui.theme.PlayerColors
@@ -372,7 +373,7 @@ fun CreatePlayerDialog(
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
-    var selectedColor by remember { mutableLongStateOf(0xFF2563EBL) }
+    var selectedColor by remember { mutableLongStateOf(Player.DEFAULT_COLOR_HEX) }
     var selectedSymbol by remember { mutableStateOf("♠") }
 
     val symbols = listOf("♠", "♥", "♦", "♣", "👑", "⭐", "🎯", "🃏")
@@ -402,7 +403,7 @@ fun CreatePlayerDialog(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     PlayerColors.forEach { color ->
-                        val hex = color.value.toLong()
+                        val hex = Player.colorToHex(color)
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -411,7 +412,7 @@ fun CreatePlayerDialog(
                                 .clickable { selectedColor = hex },
                             contentAlignment = Alignment.Center
                         ) {
-                            if (selectedColor == hex) {
+                            if (Player.sanitizeColorHex(selectedColor) == hex) {
                                 Icon(
                                     Icons.Default.Check,
                                     contentDescription = "Ausgewählt",
@@ -457,7 +458,7 @@ fun CreatePlayerDialog(
             Button(
                 onClick = {
                     if (name.trim().isNotEmpty()) {
-                        onConfirm(name.trim(), selectedColor, selectedSymbol)
+                        onConfirm(name.trim(), Player.sanitizeColorHex(selectedColor), selectedSymbol)
                     }
                 },
                 enabled = name.trim().isNotEmpty(),

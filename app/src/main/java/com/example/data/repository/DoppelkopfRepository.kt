@@ -37,14 +37,14 @@ class DoppelkopfRepository(
 
     suspend fun insertPlayer(
         name: String,
-        colorHex: Long = 0xFF2563EBL,
+        colorHex: Long = Player.DEFAULT_COLOR_HEX,
         avatarSymbol: String = "♠"
     ): Long {
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "Spielername darf nicht leer sein" }
         val player = Player(
             name = trimmed,
-            colorHex = colorHex,
+            colorHex = Player.sanitizeColorHex(colorHex),
             avatarSymbol = avatarSymbol
         )
         return playerDao.insertPlayer(player)
@@ -53,7 +53,12 @@ class DoppelkopfRepository(
     suspend fun updatePlayer(player: Player) {
         val trimmed = player.name.trim()
         require(trimmed.isNotEmpty()) { "Spielername darf nicht leer sein" }
-        playerDao.updatePlayer(player.copy(name = trimmed))
+        playerDao.updatePlayer(
+            player.copy(
+                name = trimmed,
+                colorHex = Player.sanitizeColorHex(player.colorHex)
+            )
+        )
     }
 
     suspend fun deletePlayer(player: Player) {
