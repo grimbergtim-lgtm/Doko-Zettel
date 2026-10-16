@@ -114,8 +114,22 @@ class GameViewModel(
     private val _aidaAlert = MutableStateFlow<AidaAlert?>(null)
     private val _isAidaModeActive = MutableStateFlow(false)
     private var aidaJob: Job? = null
+    private var cachedGameData: FullGameData? = null
 
     init {
+        viewModelScope.launch {
+            _gameData.collect { data ->
+                cachedGameData = data
+                if (data != null && !data.game.isInProgress) {
+                    aidaJob?.cancel()
+                    aidaJob = null
+                    _aidaAlert.value = null
+                } else if (data != null && data.game.isInProgress && _isAidaModeActive.value) {
+                    checkAndStartAidaTimer()
+                }
+            }
+        }
+
         if (settingsRepository != null) {
             viewModelScope.launch {
                 settingsRepository.aidaExtremeModeEnabled.collect { enabled ->
@@ -125,18 +139,6 @@ class GameViewModel(
                         aidaJob = null
                         _aidaAlert.value = null
                     } else {
-                        checkAndStartAidaTimer()
-                    }
-                }
-            }
-
-            viewModelScope.launch {
-                _gameData.collect { data ->
-                    if (data != null && !data.game.isInProgress) {
-                        aidaJob?.cancel()
-                        aidaJob = null
-                        _aidaAlert.value = null
-                    } else if (data != null && data.game.isInProgress && _isAidaModeActive.value) {
                         checkAndStartAidaTimer()
                     }
                 }
@@ -690,7 +692,7 @@ class GameViewModel(
     fun checkAndStartAidaTimer() {
         if (aidaJob?.isActive == true) return
         if (!_isAidaModeActive.value) return
-        val currentData = uiState.value.gameData ?: return
+        val currentData = cachedGameData ?: uiState.value.gameData ?: return
         if (!currentData.game.isInProgress) return
 
         aidaJob = viewModelScope.launch {
@@ -700,7 +702,7 @@ class GameViewModel(
 
                 if (!isActive || !_isAidaModeActive.value) break
 
-                val latestData = uiState.value.gameData
+                val latestData = cachedGameData ?: uiState.value.gameData
                 if (latestData == null || !latestData.game.isInProgress) break
 
                 val players = latestData.players
@@ -715,7 +717,7 @@ class GameViewModel(
 
                     // Warte bis die Meldung vom Spieler geschlossen wurde, bevor das nächste Intervall startet
                     while (isActive && _aidaAlert.value != null && _isAidaModeActive.value) {
-                        delay(500L)
+                        delay(100L)
                     }
                 }
             }
@@ -727,7 +729,7 @@ class GameViewModel(
     }
 
     fun triggerAidaAlertNow() {
-        val currentData = uiState.value.gameData ?: return
+        val currentData = cachedGameData ?: uiState.value.gameData ?: return
         if (currentData.players.isEmpty()) return
         viewModelScope.launch {
             val customTasks = settingsRepository?.getAidaCustomTasksSync() ?: emptyList()

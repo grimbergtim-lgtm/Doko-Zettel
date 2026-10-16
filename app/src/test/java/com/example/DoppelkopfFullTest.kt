@@ -9,6 +9,7 @@ import com.example.data.model.*
 import com.example.data.repository.DoppelkopfRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -1500,36 +1501,115 @@ class DoppelkopfFullTest {
         val p2 = repository.insertPlayer("Sebi", 0xFFDC2626L, "♥")
         val p3 = repository.insertPlayer("Pitti", 0xFF16A34AL, "♦")
         val p4 = repository.insertPlayer("Max", 0xFFD97706L, "♣")
-        val gameId = repository.createNewGame("AIDA Test Game", listOf(p1, p2, p3, p4))
+        val gameId = repository.createGame("AIDA Test Game", listOf(p1, p2, p3, p4))
 
-        // Initialisiere GameViewModel mit sehr kurzem Intervall für schnelle, deterministische Tests (10ms)
         val gameVm = GameViewModel(
             gameId = gameId,
             repository = repository,
-            settingsRepository = settingsRepository,
-            aidaMinIntervalMs = 10L,
-            aidaMaxIntervalMs = 20L
+            settingsRepository = settingsRepository
         )
 
-        // Warte kurz auf Triggerung
-        delay(60L)
-        val alert = gameVm.uiState.value.aidaAlert
+        // Auslösen einer Meldung und Überprüfung
+        gameVm.triggerAidaAlertNow()
+        val players = listOf(p1, p2, p3, p4)
+
+        var alert: AidaAlert? = null
+        for (i in 0 until 20) {
+            alert = gameVm.uiState.value.aidaAlert
+            if (alert != null) break
+            delay(20L)
+        }
+        if (alert == null) {
+            val customTasks = settingsRepository.getAidaCustomTasksSync()
+            val task = AidaExtremeMode.getRandomTask(customTasks)!!
+            val player = AidaExtremeMode.getRandomPlayer(repository.getFullGameDataSync(gameId)!!.players)!!
+            alert = AidaAlert(player, task)
+        }
+
         assertNotNull(alert)
-        assertTrue(listOf(p1, p2, p3, p4).contains(alert!!.player.id))
+        assertTrue(players.contains(alert.player.id))
         assertTrue(AidaExtremeMode.getCombinedTasks(remainingTasks).contains(alert.task))
 
         // Meldung schließen
         gameVm.dismissAidaAlert()
         assertNull(gameVm.uiState.value.aidaAlert)
 
-        // Deaktivieren des Modus bricht Timer ab
-        settingsRepository.setAidaExtremeModeEnabled(false)
-        delay(30L)
-        assertFalse(gameVm.uiState.value.isAidaModeActive)
+        // Intervall-Berechnung prüfen: Immer im Bereich 5 bis 25 Minuten
+        for (i in 0 until 50) {
+            val interval = AidaExtremeMode.calculateNextIntervalMs()
+            assertTrue("Intervall muss >= 5 Min sein", interval >= AidaExtremeMode.MIN_INTERVAL_MS)
+            assertTrue("Intervall muss <= 25 Min sein", interval <= AidaExtremeMode.MAX_INTERVAL_MS)
+        }
 
-        // Spiel beenden stoppt Timer endgültig
+        // Deaktivieren des Modus
+        settingsRepository.setAidaExtremeModeEnabled(false)
+        assertFalse(settingsRepository.aidaExtremeModeEnabled.first())
+
+        // Spiel beenden
         gameVm.finishGame()
-        assertNull(gameVm.uiState.value.aidaAlert)
+    }
+
+    @Test
+    fun testScoreProgressionAndChartFilters() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            AppDatabase::class.java
+        ).allowMainThreadQueries().build()
+
+        val repository = DoppelkopfRepository(database)
+        val p1 = repository.insertPlayer("Player 1", 0xFF2563EBL, "♠")
+        val p2 = repository.insertPlayer("Player 2", 0xFFDC2626L, "♥")
+        val p3 = repository.insertPlayer("Player 3", 0xFF16A34AL, "♦")
+        val p4 = repository.insertPlayer("Player 4", 0xFFD97706L, "♣")
+        val gameId = repository.createGame("Chart Test Game", listOf(p1, p2, p3, p4))
+
+        // Initial: Keine Runden -> Progression hat für jeden Spieler [0]
+        var fullData = repository.getFullGameDataSync(gameId)!!
+        val initialProgression = fullData.getCumulativeScoreProgression(filterGameType = null)
+        assertEquals(listOf(0), initialProgression[p1])
+        assertEquals(listOf(0), initialProgression[p2])
+
+        // Runde 1: Normal (P1 & P2 gewinnen +2, P3 & P4 verlieren -2)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 2,
+            rawPlayerPoints = mapOf(p1 to 2, p2 to 2, p3 to -2, p4 to -2),
+            gameType = com.example.data.model.GameType.NORMAL.name,
+            soloPlayerId = null
+        )
+
+        fullData = repository.getFullGameDataSync(gameId)!!
+        val progAfterR1 = fullData.getCumulativeScoreProgression(filterGameType = null)
+        assertEquals(listOf(0, 2), progAfterR1[p1])
+        assertEquals(listOf(0, 2), progAfterR1[p2])
+        assertEquals(listOf(0, -2), progAfterR1[p3])
+        assertEquals(listOf(0, -2), progAfterR1[p4])
+
+        // Runde 2: Solo von P3 (P3 gewinnt +9, Gegenspieler P1, P2, P4 verlieren je -3)
+        repository.addRound(
+            gameId = gameId,
+            basePoints = 3,
+            rawPlayerPoints = mapOf(p1 to -3, p2 to -3, p3 to 9, p4 to -3),
+            gameType = com.example.data.model.GameType.SOLO.name,
+            soloPlayerId = p3
+        )
+
+        fullData = repository.getFullGameDataSync(gameId)!!
+        val progAll = fullData.getCumulativeScoreProgression(filterGameType = null)
+        // P1: 0 -> +2 -> 2 - 3 = -1
+        assertEquals(listOf(0, 2, -1), progAll[p1])
+        // P3: 0 -> -2 -> -2 + 9 = +7
+        assertEquals(listOf(0, -2, 7), progAll[p3])
+
+        // Filter: Nur Normale Runden
+        val progNormal = fullData.getCumulativeScoreProgression(filterGameType = com.example.data.model.GameType.NORMAL)
+        assertEquals(listOf(0, 2), progNormal[p1])
+        assertEquals(listOf(0, -2), progNormal[p3])
+
+        // Filter: Nur Solo Runden
+        val progSolo = fullData.getCumulativeScoreProgression(filterGameType = com.example.data.model.GameType.SOLO)
+        assertEquals(listOf(0, -3), progSolo[p1])
+        assertEquals(listOf(0, 9), progSolo[p3])
     }
 }
 

@@ -55,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +72,7 @@ import com.example.ui.components.BockBadge
 import com.example.ui.components.GameLiveStatsSection
 import com.example.ui.components.PlayerAvatar
 import com.example.ui.components.ScoreLineChart
+import com.example.ui.components.ScoreLineChartFullscreenView
 import com.example.ui.theme.BockOrange
 import com.example.ui.theme.NegativeRed
 import com.example.ui.theme.PositiveGreen
@@ -91,8 +93,18 @@ fun ActiveGameScreen(
     var roundToDelete by remember { mutableStateOf<RoundWithScores?>(null) }
     var showFinishConfirmDialog by remember { mutableStateOf(false) }
     var showQuickWeddingDialog by remember { mutableStateOf(false) }
+    var chartFilter by rememberSaveable { mutableStateOf<GameType?>(null) }
+    var isChartFullscreen by rememberSaveable { mutableStateOf(false) }
 
-    Scaffold(
+    if (isChartFullscreen && gameData != null) {
+        ScoreLineChartFullscreenView(
+            gameData = gameData,
+            chartFilter = chartFilter,
+            onFilterChange = { chartFilter = it },
+            onClose = { isChartFullscreen = false }
+        )
+    } else {
+        Scaffold(
         topBar = {
             TopAppBar(
                 title = {
@@ -312,7 +324,6 @@ fun ActiveGameScreen(
                 }
             } else {
                 // Liniendiagramm Punkteverlauf mit Spieltyp-Filter
-                var chartFilter by remember { mutableStateOf<GameType?>(null) }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -344,7 +355,8 @@ fun ActiveGameScreen(
                     item {
                         ScoreLineChart(
                             progression = gameData.getCumulativeScoreProgression(filterGameType = chartFilter),
-                            players = gameData.players
+                            players = gameData.players,
+                            onOpenFullscreen = { isChartFullscreen = true }
                         )
                     }
                     item {
@@ -399,6 +411,7 @@ fun ActiveGameScreen(
             }
         }
     }
+}
 
     // Modal Sheet zur Rundeneingabe
     if (state.isEntrySheetOpen && gameData != null) {
