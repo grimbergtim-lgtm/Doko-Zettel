@@ -73,7 +73,7 @@ fun DoppelkopfNavGraph(
         ) { backStackEntry ->
             val gameId = backStackEntry.arguments?.getLong("gameId") ?: 0L
             val gameVm = viewModel(key = "game_$gameId") {
-                GameViewModel(gameId, repository)
+                GameViewModel(gameId, repository, settingsRepository)
             }
             ActiveGameScreen(
                 viewModel = gameVm,

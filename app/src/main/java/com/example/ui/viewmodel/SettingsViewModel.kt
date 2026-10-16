@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val defaultBockRounds: Int = 4,
+    val aidaExtremeModeEnabled: Boolean = false,
+    val aidaCustomTasks: List<String> = emptyList(),
     val exportJsonString: String? = null,
     val infoMessage: String? = null,
     val errorMessage: String? = null,
@@ -31,9 +33,15 @@ class SettingsViewModel(
 
     val uiState: StateFlow<SettingsUiState> = combine(
         _internalState,
-        settingsRepository.defaultBockRounds
-    ) { current, bockRounds ->
-        current.copy(defaultBockRounds = bockRounds)
+        settingsRepository.defaultBockRounds,
+        settingsRepository.aidaExtremeModeEnabled,
+        settingsRepository.aidaCustomTasks
+    ) { current, bockRounds, aidaEnabled, customTasks ->
+        current.copy(
+            defaultBockRounds = bockRounds,
+            aidaExtremeModeEnabled = aidaEnabled,
+            aidaCustomTasks = customTasks
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -44,6 +52,43 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.setDefaultBockRounds(rounds)
             _internalState.update { it.copy(infoMessage = "Standard-Bockrunden auf $rounds aktualisiert.") }
+        }
+    }
+
+    fun setAidaExtremeModeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAidaExtremeModeEnabled(enabled)
+            val msg = if (enabled) "AIDA Extreme Mode aktiviert." else "AIDA Extreme Mode deaktiviert."
+            _internalState.update { it.copy(infoMessage = msg) }
+        }
+    }
+
+    fun addAidaCustomTask(task: String) {
+        viewModelScope.launch {
+            val added = settingsRepository.addAidaCustomTask(task)
+            if (added) {
+                _internalState.update { it.copy(infoMessage = "Aufgabe hinzugefügt.") }
+            } else {
+                _internalState.update { it.copy(errorMessage = "Aufgabe darf nicht leer sein.") }
+            }
+        }
+    }
+
+    fun updateAidaCustomTask(index: Int, newTask: String) {
+        viewModelScope.launch {
+            val updated = settingsRepository.updateAidaCustomTask(index, newTask)
+            if (updated) {
+                _internalState.update { it.copy(infoMessage = "Aufgabe aktualisiert.") }
+            } else {
+                _internalState.update { it.copy(errorMessage = "Aufgabe darf nicht leer sein.") }
+            }
+        }
+    }
+
+    fun deleteAidaCustomTask(index: Int) {
+        viewModelScope.launch {
+            settingsRepository.deleteAidaCustomTask(index)
+            _internalState.update { it.copy(infoMessage = "Aufgabe gelöscht.") }
         }
     }
 

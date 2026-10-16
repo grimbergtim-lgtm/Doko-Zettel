@@ -2,6 +2,8 @@ package com.example.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.model.AidaAlert
+import com.example.data.model.AidaExtremeMode
 import com.example.data.model.BockCalculator
 import com.example.data.model.FullGameData
 import com.example.data.model.Game
@@ -9,12 +11,16 @@ import com.example.data.model.GameRound
 import com.example.data.model.GameType
 import com.example.data.model.Player
 import com.example.data.repository.DoppelkopfRepository
+import com.example.data.settings.SettingsRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class EntryMode {
@@ -64,12 +70,19 @@ data class GameUiState(
 
     // Manuelle Bock-Korrektur
     val bockAdjustLevel: Int = 1,
-    val bockAdjustRemaining: Int = 0
+    val bockAdjustRemaining: Int = 0,
+
+    // AIDA Extreme Mode
+    val aidaAlert: AidaAlert? = null,
+    val isAidaModeActive: Boolean = false
 )
 
 class GameViewModel(
     val gameId: Long,
-    private val repository: DoppelkopfRepository
+    private val repository: DoppelkopfRepository,
+    private val settingsRepository: SettingsRepository? = null,
+    private val aidaMinIntervalMs: Long = AidaExtremeMode.MIN_INTERVAL_MS,
+    private val aidaMaxIntervalMs: Long = AidaExtremeMode.MAX_INTERVAL_MS
 ) : ViewModel() {
 
     private val _gameData = repository.getFullGameData(gameId)
@@ -97,6 +110,40 @@ class GameViewModel(
     private val _bockAdjustLevel = MutableStateFlow(1)
     private val _bockAdjustRemaining = MutableStateFlow(0)
 
+    // AIDA Extreme Mode State & Job
+    private val _aidaAlert = MutableStateFlow<AidaAlert?>(null)
+    private val _isAidaModeActive = MutableStateFlow(false)
+    private var aidaJob: Job? = null
+
+    init {
+        if (settingsRepository != null) {
+            viewModelScope.launch {
+                settingsRepository.aidaExtremeModeEnabled.collect { enabled ->
+                    _isAidaModeActive.value = enabled
+                    if (!enabled) {
+                        aidaJob?.cancel()
+                        aidaJob = null
+                        _aidaAlert.value = null
+                    } else {
+                        checkAndStartAidaTimer()
+                    }
+                }
+            }
+
+            viewModelScope.launch {
+                _gameData.collect { data ->
+                    if (data != null && !data.game.isInProgress) {
+                        aidaJob?.cancel()
+                        aidaJob = null
+                        _aidaAlert.value = null
+                    } else if (data != null && data.game.isInProgress && _isAidaModeActive.value) {
+                        checkAndStartAidaTimer()
+                    }
+                }
+            }
+        }
+    }
+
     val uiState: StateFlow<GameUiState> = combine(
         _gameData,
         _errorMessage,
@@ -118,7 +165,9 @@ class GameViewModel(
         _bockAdjustLevel,
         _bockAdjustRemaining,
         _gameType,
-        _soloPlayerId
+        _soloPlayerId,
+        _aidaAlert,
+        _isAidaModeActive
     ) { args: Array<Any?> ->
         val data = args[0] as FullGameData?
         @Suppress("UNCHECKED_CAST")
@@ -144,7 +193,9 @@ class GameViewModel(
             bockAdjustLevel = args[17] as Int,
             bockAdjustRemaining = args[18] as Int,
             gameType = args[19] as GameType,
-            soloPlayerId = args[20] as Long?
+            soloPlayerId = args[20] as Long?,
+            aidaAlert = args[21] as AidaAlert?,
+            isAidaModeActive = args[22] as Boolean
         )
     }.stateIn(
         scope = viewModelScope,
@@ -617,6 +668,9 @@ class GameViewModel(
     }
 
     fun finishGame() {
+        aidaJob?.cancel()
+        aidaJob = null
+        _aidaAlert.value = null
         viewModelScope.launch {
             repository.finishGame(gameId)
         }
@@ -630,5 +684,64 @@ class GameViewModel(
 
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    // AIDA Extreme Mode Methoden
+    fun checkAndStartAidaTimer() {
+        if (aidaJob?.isActive == true) return
+        if (!_isAidaModeActive.value) return
+        val currentData = uiState.value.gameData ?: return
+        if (!currentData.game.isInProgress) return
+
+        aidaJob = viewModelScope.launch {
+            while (isActive && _isAidaModeActive.value) {
+                val delayMs = AidaExtremeMode.calculateNextIntervalMs(aidaMinIntervalMs, aidaMaxIntervalMs)
+                delay(delayMs)
+
+                if (!isActive || !_isAidaModeActive.value) break
+
+                val latestData = uiState.value.gameData
+                if (latestData == null || !latestData.game.isInProgress) break
+
+                val players = latestData.players
+                if (players.isEmpty()) continue
+
+                val customTasks = settingsRepository?.getAidaCustomTasksSync() ?: emptyList()
+                val task = AidaExtremeMode.getRandomTask(customTasks)
+                val player = AidaExtremeMode.getRandomPlayer(players)
+
+                if (task != null && player != null) {
+                    _aidaAlert.value = AidaAlert(player = player, task = task)
+
+                    // Warte bis die Meldung vom Spieler geschlossen wurde, bevor das nächste Intervall startet
+                    while (isActive && _aidaAlert.value != null && _isAidaModeActive.value) {
+                        delay(500L)
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissAidaAlert() {
+        _aidaAlert.value = null
+    }
+
+    fun triggerAidaAlertNow() {
+        val currentData = uiState.value.gameData ?: return
+        if (currentData.players.isEmpty()) return
+        viewModelScope.launch {
+            val customTasks = settingsRepository?.getAidaCustomTasksSync() ?: emptyList()
+            val task = AidaExtremeMode.getRandomTask(customTasks)
+            val player = AidaExtremeMode.getRandomPlayer(currentData.players)
+            if (task != null && player != null) {
+                _aidaAlert.value = AidaAlert(player = player, task = task)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        aidaJob?.cancel()
+        aidaJob = null
     }
 }

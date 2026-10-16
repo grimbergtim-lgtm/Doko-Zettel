@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -522,6 +523,85 @@ fun ActiveGameScreen(
                 viewModel.openQuickWeddingEntry(playerId)
             },
             onDismiss = { showQuickWeddingDialog = false }
+        )
+    }
+
+    // AIDA Extreme Mode Alert Dialog
+    state.aidaAlert?.let { alert ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissAidaAlert() },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.EmojiEvents,
+                    contentDescription = null,
+                    tint = Color(0xFFD97706),
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "AIDA Extreme Mode",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Ausgewählter Spieler
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        PlayerAvatar(player = alert.player, size = 38.dp, showBorder = true)
+                        Column {
+                            Text(
+                                text = "Auserwählter Spieler:",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = alert.player.name,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+
+                    // Aufgabentext
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "„${alert.task}“",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.dismissAidaAlert() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("aida_alert_confirm_button")
+                ) {
+                    Text("Alles klar", fontWeight = FontWeight.Bold)
+                }
+            }
         )
     }
 }

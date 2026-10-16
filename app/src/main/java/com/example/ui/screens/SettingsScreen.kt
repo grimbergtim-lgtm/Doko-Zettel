@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,8 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -35,10 +39,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.example.data.model.AidaExtremeMode
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +74,9 @@ fun SettingsScreen(
 
     var showImportDialog by remember { mutableStateOf(false) }
     var importInputText by remember { mutableStateOf("") }
+    var newCustomTaskText by remember { mutableStateOf("") }
+    var editingTaskIndex by remember { mutableStateOf<Int?>(null) }
+    var editingTaskText by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -160,7 +170,148 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. Datensicherung (JSON Export & Import)
+            // 2. AIDA Extreme Mode
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "AIDA Extreme Mode",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Zufällige Aufgaben für aktive Spieler im Abstand von 5 bis 25 Minuten während der Partie.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Switch(
+                            checked = state.aidaExtremeModeEnabled,
+                            onCheckedChange = { viewModel.setAidaExtremeModeEnabled(it) },
+                            modifier = Modifier.testTag("aida_extreme_switch")
+                        )
+                    }
+                }
+            }
+
+            // 3. Eigene Extreme-Aufgaben
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Eigene Extreme-Aufgaben",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Standardmäßig sind ${AidaExtremeMode.DEFAULT_TASKS.size} Standardaufgaben aktiv. Hier können weitere eigene Aufgaben hinzugefügt, bearbeitet oder gelöscht werden:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Neue Aufgabe eingeben
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = newCustomTaskText,
+                            onValueChange = { newCustomTaskText = it },
+                            label = { Text("Neue Aufgabe") },
+                            placeholder = { Text("z.B. Bestelle eine Runde Wasser") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("new_aida_task_input")
+                        )
+                        Button(
+                            onClick = {
+                                if (newCustomTaskText.trim().isNotEmpty()) {
+                                    viewModel.addAidaCustomTask(newCustomTaskText.trim())
+                                    newCustomTaskText = ""
+                                }
+                            },
+                            enabled = newCustomTaskText.trim().isNotEmpty(),
+                            modifier = Modifier.testTag("add_aida_task_button")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Hinzufügen")
+                        }
+                    }
+
+                    // Liste vorhandener eigener Aufgaben
+                    if (state.aidaCustomTasks.isEmpty()) {
+                        Text(
+                            text = "Noch keine eigenen Aufgaben gespeichert.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.aidaCustomTasks.forEachIndexed { index, task ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${index + 1}. $task",
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Row {
+                                        IconButton(
+                                            onClick = {
+                                                editingTaskIndex = index
+                                                editingTaskText = task
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = "Bearbeiten",
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { viewModel.deleteAidaCustomTask(index) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Löschen",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = NegativeRed
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Datensicherung (JSON Export & Import)
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -314,6 +465,42 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showImportDialog = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    // Bearbeiten-Dialog für eigene AIDA-Aufgabe
+    editingTaskIndex?.let { index ->
+        AlertDialog(
+            onDismissRequest = { editingTaskIndex = null },
+            title = { Text("Aufgabe bearbeiten", fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = editingTaskText,
+                    onValueChange = { editingTaskText = it },
+                    label = { Text("Aufgabentext") },
+                    singleLine = false,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (editingTaskText.trim().isNotEmpty()) {
+                            viewModel.updateAidaCustomTask(index, editingTaskText.trim())
+                            editingTaskIndex = null
+                        }
+                    },
+                    enabled = editingTaskText.trim().isNotEmpty()
+                ) {
+                    Text("Speichern")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingTaskIndex = null }) {
                     Text("Abbrechen")
                 }
             }

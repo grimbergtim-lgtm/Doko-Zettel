@@ -7,16 +7,22 @@ import com.example.data.backup.BackupManager
 import com.example.data.local.AppDatabase
 import com.example.data.model.*
 import com.example.data.repository.DoppelkopfRepository
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.example.data.settings.SettingsRepository
+import com.example.ui.viewmodel.GameViewModel
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -24,6 +30,7 @@ class DoppelkopfFullTest {
 
     private lateinit var database: AppDatabase
     private lateinit var repository: DoppelkopfRepository
+    private lateinit var settingsRepository: SettingsRepository
 
     @Before
     fun setup() {
@@ -32,6 +39,7 @@ class DoppelkopfFullTest {
             .allowMainThreadQueries()
             .build()
         repository = DoppelkopfRepository(database)
+        settingsRepository = SettingsRepository(context)
     }
 
     @After
@@ -1429,6 +1437,99 @@ class DoppelkopfFullTest {
         assertEquals(0.0, benDora.winRatePercent, 0.01)
         assertEquals(-12, benDora.jointPointsBalance)
         assertEquals(0, benDora.wonRoundsPointsSum)
+    }
+
+    @Test
+    fun testAidaExtremeModeFullFlow() = runBlocking {
+        // 1. Standardaufgaben prüfen (20 Aufgaben, nicht leer, keine Duplikate)
+        assertEquals(20, AidaExtremeMode.DEFAULT_TASKS.size)
+        AidaExtremeMode.DEFAULT_TASKS.forEach { task ->
+            assertTrue(task.isNotBlank())
+        }
+        assertEquals(20, AidaExtremeMode.DEFAULT_TASKS.toSet().size)
+
+        // 2. Kombinierter Pool & Zufallsauswahl
+        val initialPool = AidaExtremeMode.getCombinedTasks(emptyList())
+        assertEquals(20, initialPool.size)
+
+        // Leere eigene Aufgaben werden ignoriert
+        val poolWithEmpty = AidaExtremeMode.getCombinedTasks(listOf("", "   ", "\n"))
+        assertEquals(20, poolWithEmpty.size)
+
+        // Gültige eigene Aufgaben werden ergänzt
+        val customList = listOf("Eigene Testaufgabe 1", "Eigene Testaufgabe 2")
+        val combinedPool = AidaExtremeMode.getCombinedTasks(customList)
+        assertEquals(22, combinedPool.size)
+        assertTrue(combinedPool.contains("Eigene Testaufgabe 1"))
+        assertTrue(combinedPool.contains("Eigene Testaufgabe 2"))
+        // Standardaufgaben bleiben unverändert
+        assertEquals(20, AidaExtremeMode.DEFAULT_TASKS.size)
+
+        // 3. Einstellungen & Persistenz (SettingsRepository)
+        // Standardmäßig deaktiviert
+        assertFalse(settingsRepository.aidaExtremeModeEnabled.first())
+
+        // Aktivieren
+        settingsRepository.setAidaExtremeModeEnabled(true)
+        assertTrue(settingsRepository.aidaExtremeModeEnabled.first())
+
+        // Eigene Aufgabe hinzufügen
+        assertFalse(settingsRepository.addAidaCustomTask("   ")) // leer darf nicht gespeichert werden
+        assertTrue(settingsRepository.addAidaCustomTask("Erste eigene Aufgabe"))
+        assertTrue(settingsRepository.addAidaCustomTask("Zweite eigene Aufgabe"))
+
+        val storedTasks = settingsRepository.aidaCustomTasks.first()
+        assertEquals(2, storedTasks.size)
+        assertEquals("Erste eigene Aufgabe", storedTasks[0])
+        assertEquals("Zweite eigene Aufgabe", storedTasks[1])
+
+        // Eigene Aufgabe bearbeiten
+        assertFalse(settingsRepository.updateAidaCustomTask(0, "  ")) // leer ungültig
+        assertTrue(settingsRepository.updateAidaCustomTask(0, "Aktualisierte erste Aufgabe"))
+        val updatedTasks = settingsRepository.aidaCustomTasks.first()
+        assertEquals("Aktualisierte erste Aufgabe", updatedTasks[0])
+
+        // Eigene Aufgabe löschen
+        settingsRepository.deleteAidaCustomTask(1)
+        val remainingTasks = settingsRepository.aidaCustomTasks.first()
+        assertEquals(1, remainingTasks.size)
+        assertEquals("Aktualisierte erste Aufgabe", remainingTasks[0])
+
+        // 4. GameViewModel Integration & Timer
+        val p1 = repository.insertPlayer("Tim", 0xFF2563EBL, "♠")
+        val p2 = repository.insertPlayer("Sebi", 0xFFDC2626L, "♥")
+        val p3 = repository.insertPlayer("Pitti", 0xFF16A34AL, "♦")
+        val p4 = repository.insertPlayer("Max", 0xFFD97706L, "♣")
+        val gameId = repository.createNewGame("AIDA Test Game", listOf(p1, p2, p3, p4))
+
+        // Initialisiere GameViewModel mit sehr kurzem Intervall für schnelle, deterministische Tests (10ms)
+        val gameVm = GameViewModel(
+            gameId = gameId,
+            repository = repository,
+            settingsRepository = settingsRepository,
+            aidaMinIntervalMs = 10L,
+            aidaMaxIntervalMs = 20L
+        )
+
+        // Warte kurz auf Triggerung
+        delay(60L)
+        val alert = gameVm.uiState.value.aidaAlert
+        assertNotNull(alert)
+        assertTrue(listOf(p1, p2, p3, p4).contains(alert!!.player.id))
+        assertTrue(AidaExtremeMode.getCombinedTasks(remainingTasks).contains(alert.task))
+
+        // Meldung schließen
+        gameVm.dismissAidaAlert()
+        assertNull(gameVm.uiState.value.aidaAlert)
+
+        // Deaktivieren des Modus bricht Timer ab
+        settingsRepository.setAidaExtremeModeEnabled(false)
+        delay(30L)
+        assertFalse(gameVm.uiState.value.isAidaModeActive)
+
+        // Spiel beenden stoppt Timer endgültig
+        gameVm.finishGame()
+        assertNull(gameVm.uiState.value.aidaAlert)
     }
 }
 
